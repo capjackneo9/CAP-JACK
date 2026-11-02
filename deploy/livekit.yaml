@@ -1,0 +1,10 @@
+# LiveKit server config (guest rooms). Generate keys with:
+#   docker run --rm livekit/livekit-server generate-keys
+port: 7880
+rtc:
+  tcp_port: 7881
+  port_range_start: 50000
+  port_range_end: 50200
+  use_external_ip: true
+keys:
+  # REPLACE_WITH_API_KEY: REPLACE_WITH_API_SECRET

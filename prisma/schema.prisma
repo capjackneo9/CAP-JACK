@@ -1,0 +1,395 @@
+// NCVR — Nite Cap Vibe Radio database schema.
+// Station-scoped models carry stationId so the network can grow to multiple stations.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  OWNER
+  STATION_MANAGER
+  DJ_HOST
+  MUSIC_REVIEWER
+  ADVERTISER
+  ARTIST
+}
+
+enum TrackCategory {
+  CAPRIO_ORIGINALS
+  VIBE_MUSIC
+  ATL_SOUL
+  ALT_DIMENSION
+  GOSPEL_CINEMATIC
+  VIBE_19
+  INDEPENDENT_AI
+  DJ_MIXES
+  INTERVIEWS
+  STATION_IDS
+  COMMERCIALS
+  SOUND_EFFECTS
+}
+
+enum TrackStatus {
+  PENDING_REVIEW
+  APPROVED
+  REJECTED
+  ARCHIVED
+}
+
+enum SubmissionStatus {
+  DRAFT
+  SUBMITTED
+  UNDER_REVIEW
+  APPROVED
+  REJECTED
+  SCHEDULED
+  BROADCAST_COMPLETED
+}
+
+enum PaymentStatus {
+  NONE
+  PENDING
+  PAID
+  REFUNDED
+  FAILED
+}
+
+enum BookingType {
+  INTERVIEW
+  COMMERCIAL_SPOT
+  COMMERCIAL_PRODUCTION
+  SHOW_SPONSORSHIP
+  ARTIST_SHOWCASE
+  HOSTED_SHOW
+  OTHER
+}
+
+enum BookingStatus {
+  REQUESTED
+  UNDER_REVIEW
+  APPROVED
+  DECLINED
+  SCHEDULED
+  COMPLETED
+  CANCELLED
+}
+
+enum ProgramFormat {
+  LIVE
+  PRERECORDED
+  AUTOMATED
+}
+
+enum SyncState {
+  NOT_LINKED
+  PENDING
+  SYNCED
+  FAILED
+}
+
+enum InviteStatus {
+  PENDING
+  WAITING
+  ON_AIR
+  ENDED
+  REVOKED
+}
+
+model Station {
+  id                 String   @id @default(cuid())
+  slug               String   @unique
+  name               String
+  tagline            String?
+  timezone           String   @default("America/New_York")
+  azuracastStationId String?
+  // Rotation goals in whole percent; must sum to 100
+  rotationCaprioPct  Int      @default(75)
+  rotationIndiePct   Int      @default(15)
+  rotationGuestPct   Int      @default(10)
+  showListenerCount  Boolean  @default(false)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  programs    Program[]
+  tracks      Track[]
+  submissions Submission[]
+  bookings    Booking[]
+  sponsors    Sponsor[]
+  overrides   ScheduleOverride[]
+  products    Product[]
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String
+  passwordHash String
+  role         Role
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  host      Host?
+  auditLogs AuditLog[]
+  reviews   Submission[] @relation("SubmissionReviewer")
+  approvals Track[]      @relation("TrackApprover")
+}
+
+model Host {
+  id                  String   @id @default(cuid())
+  slug                String   @unique
+  name                String
+  bio                 String?
+  imagePath           String?
+  links               Json?
+  featured            Boolean  @default(false)
+  userId              String?  @unique
+  user                User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  // AzuraCast streamer (live DJ) account id, when linked
+  azuracastStreamerId Int?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  programs Program[]
+}
+
+model Artist {
+  id        String   @id @default(cuid())
+  slug      String   @unique
+  name      String
+  bio       String?
+  imagePath String?
+  links     Json?
+  featured  Boolean  @default(false)
+  isCaprio  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tracks Track[]
+}
+
+model Sponsor {
+  id         String   @id @default(cuid())
+  stationId  String
+  station    Station  @relation(fields: [stationId], references: [id], onDelete: Cascade)
+  name       String
+  website    String?
+  disclosure String   @default("Paid sponsorship")
+  active     Boolean  @default(true)
+  createdAt  DateTime @default(now())
+
+  programs Program[]
+}
+
+model Program {
+  id                  String        @id @default(cuid())
+  stationId           String
+  station             Station       @relation(fields: [stationId], references: [id], onDelete: Cascade)
+  slug                String
+  title               String
+  description         String?
+  format              ProgramFormat @default(AUTOMATED)
+  imagePath           String?
+  featuredGuest       String?
+  active              Boolean       @default(true)
+  // The program automation falls back to when nothing else is scheduled.
+  isFallback          Boolean       @default(false)
+  // Shows marked exclusive may not overlap any other exclusive show.
+  exclusive           Boolean       @default(true)
+  // Rotation bucket this program counts toward
+  bucket              String        @default("CAPRIO")
+  hostId              String?
+  host                Host?         @relation(fields: [hostId], references: [id], onDelete: SetNull)
+  sponsorId           String?
+  sponsor             Sponsor?      @relation(fields: [sponsorId], references: [id], onDelete: SetNull)
+  // Broadcast engine linkage
+  azuracastPlaylistId Int?
+  syncState           SyncState     @default(NOT_LINKED)
+  syncedAt            DateTime?
+  syncError           String?
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+
+  slots     ScheduleSlot[]
+  overrides ScheduleOverride[]
+
+  @@unique([stationId, slug])
+}
+
+/// A weekly recurring slot. dayOfWeek: ISO 1=Mon … 7=Sun. Minutes from local midnight.
+/// endMinute is exclusive and may be 1440. Slots never cross midnight (split them).
+model ScheduleSlot {
+  id          String   @id @default(cuid())
+  programId   String
+  program     Program  @relation(fields: [programId], references: [id], onDelete: Cascade)
+  dayOfWeek   Int
+  startMinute Int
+  endMinute   Int
+  createdAt   DateTime @default(now())
+
+  @@index([dayOfWeek])
+}
+
+/// One-off replacement of the regular schedule (e.g. a special broadcast).
+model ScheduleOverride {
+  id        String   @id @default(cuid())
+  stationId String
+  station   Station  @relation(fields: [stationId], references: [id], onDelete: Cascade)
+  programId String
+  program   Program  @relation(fields: [programId], references: [id], onDelete: Cascade)
+  startsAt  DateTime
+  endsAt    DateTime
+  reason    String?
+  createdAt DateTime @default(now())
+
+  @@index([startsAt, endsAt])
+}
+
+model Track {
+  id               String        @id @default(cuid())
+  stationId        String
+  station          Station       @relation(fields: [stationId], references: [id], onDelete: Cascade)
+  title            String
+  artistName       String
+  artistId         String?
+  artist           Artist?       @relation(fields: [artistId], references: [id], onDelete: SetNull)
+  album            String?
+  genre            String?
+  category         TrackCategory
+  status           TrackStatus   @default(PENDING_REVIEW)
+  durationSec      Int?
+  isrc             String?
+  credits          String?
+  explicit         Boolean       @default(false)
+  rightsConfirmed  Boolean       @default(false)
+  filePath         String
+  fileMime         String
+  fileSize         Int
+  artworkPath      String?
+  playlists        String[]      @default([])
+  azuracastMediaId Int?
+  azuracastPath    String?
+  approvedById     String?
+  approvedBy       User?         @relation("TrackApprover", fields: [approvedById], references: [id], onDelete: SetNull)
+  approvedAt       DateTime?
+  submissionId     String?       @unique
+  submission       Submission?   @relation(fields: [submissionId], references: [id], onDelete: SetNull)
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  @@index([status, category])
+}
+
+model Submission {
+  id                         String           @id @default(cuid())
+  stationId                  String
+  station                    Station          @relation(fields: [stationId], references: [id], onDelete: Cascade)
+  artistName                 String
+  email                      String
+  songTitle                  String
+  genre                      String
+  bio                        String
+  audioPath                  String
+  audioMime                  String
+  audioSize                  Int
+  artworkPath                String?
+  aiGenerated                Boolean          @default(true)
+  aiToolsUsed                String?
+  commercialRightsConfirmed  Boolean
+  broadcastPermissionGranted Boolean
+  promoPackage               String?
+  status                     SubmissionStatus @default(SUBMITTED)
+  paymentStatus              PaymentStatus    @default(NONE)
+  stripeSessionId            String?          @unique
+  reviewerId                 String?
+  reviewer                   User?            @relation("SubmissionReviewer", fields: [reviewerId], references: [id], onDelete: SetNull)
+  reviewNotes                String?
+  history                    Json             @default("[]")
+  createdAt                  DateTime         @default(now())
+  updatedAt                  DateTime         @updatedAt
+
+  track Track?
+
+  @@index([status])
+}
+
+model Product {
+  id            String      @id @default(cuid())
+  stationId     String
+  station       Station     @relation(fields: [stationId], references: [id], onDelete: Cascade)
+  slug          String
+  name          String
+  description   String
+  type          BookingType
+  // Price range in cents. Null max = single price. Null both = custom quote.
+  priceMinCents Int?
+  priceMaxCents Int?
+  active        Boolean     @default(true)
+
+  bookings Booking[]
+
+  @@unique([stationId, slug])
+}
+
+model Booking {
+  id                     String        @id @default(cuid())
+  stationId              String
+  station                Station       @relation(fields: [stationId], references: [id], onDelete: Cascade)
+  type                   BookingType
+  productId              String?
+  product                Product?      @relation(fields: [productId], references: [id], onDelete: SetNull)
+  status                 BookingStatus @default(REQUESTED)
+  contactName            String
+  email                  String
+  organization           String?
+  phone                  String?
+  details                String
+  preferredDates         String?
+  mediaPath              String?
+  priceCents             Int?
+  paymentStatus          PaymentStatus @default(NONE)
+  stripeSessionId        String?       @unique
+  // Sponsored content must be disclosed on-air and on the website.
+  disclosureAcknowledged Boolean       @default(false)
+  internalNotes          String?
+  createdAt              DateTime      @default(now())
+  updatedAt              DateTime      @updatedAt
+
+  invites GuestInvite[]
+}
+
+model GuestInvite {
+  id               String       @id @default(cuid())
+  bookingId        String?
+  booking          Booking?     @relation(fields: [bookingId], references: [id], onDelete: SetNull)
+  programId        String?
+  guestName        String
+  guestEmail       String?
+  // sha256 of the invite token; the raw token is shown to the host once.
+  tokenHash        String       @unique
+  roomName         String
+  status           InviteStatus @default(PENDING)
+  expiresAt        DateTime
+  recordingAllowed Boolean      @default(false)
+  guestConsentedAt DateTime?
+  createdById      String
+  createdAt        DateTime     @default(now())
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  userId     String?
+  user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  action     String
+  target     String?
+  details    Json?
+  liveImpact Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  @@index([createdAt])
+}

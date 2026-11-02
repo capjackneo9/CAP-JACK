@@ -1,0 +1,58 @@
+{
+  "name": "ncvr",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Nite Cap Vibe Radio (NCVR) — 24/7 Afro-futuristic digital radio platform and private broadcast studio",
+  "scripts": {
+    "dev": "next dev",
+    "build": "prisma generate && next build",
+    "start": "next start",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "db:migrate": "prisma migrate deploy",
+    "db:migrate:dev": "prisma migrate dev",
+    "db:seed": "tsx prisma/seed.ts",
+    "db:studio": "prisma studio",
+    "user:create": "tsx scripts/create-user.ts",
+    "schedule:check": "tsx scripts/check-schedule.ts",
+    "test:e2e": "node tests/e2e/run.cjs",
+    "stub:azuracast": "node tests/e2e/azuracast-stub.mjs 8099"
+  },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.19.3",
+    "bcryptjs": "^3.0.3",
+    "livekit-client": "^2.23.0",
+    "livekit-server-sdk": "^2.19.2",
+    "motion": "^14.9.0",
+    "next": "15.5",
+    "next-auth": "^5.0.0-beta.32",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "server-only": "^0.0.1",
+    "stripe": "^23.1.0",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@eslint/eslintrc": "^3.3.7",
+    "@tailwindcss/postcss": "^4.3.3",
+    "@types/bcryptjs": "^2.4.6",
+    "@types/node": "^26.6.6",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@types/ws": "^8.18.2",
+    "eslint": "^9.39.5",
+    "eslint-config-next": "15.5",
+    "postcss": "^8.5.32",
+    "prisma": "^6.19.3",
+    "tailwindcss": "^4.3.3",
+    "tsx": "^4.23.15",
+    "typescript": "5.9",
+    "vitest": "^3.2.7",
+    "ws": "^8.22.1"
+  }
+}

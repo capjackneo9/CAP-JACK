@@ -1,0 +1,27 @@
+# Host-level Caddy for srv2118691.hstgr.cloud (Hostinger KVM 4).
+# Caddy owns ports 80/443 and gets TLS certificates automatically.
+# AzuraCast is moved to internal ports 8080/8443 (see docs/DEPLOYMENT.md).
+
+# Public NCVR site (standalone address). capriojacksoncoded.si/radio can redirect or proxy here.
+radio.capriojacksoncoded.si {
+	encode zstd gzip
+	reverse_proxy 127.0.0.1:3000
+}
+
+# Private studio — same app; middleware serves /studio for this host.
+studio.capriojacksoncoded.si {
+	encode zstd gzip
+	reverse_proxy 127.0.0.1:3000
+}
+
+# AzuraCast: admin UI, public API, /listen streams and the /webdj websocket.
+stream.capriojacksoncoded.si {
+	reverse_proxy 127.0.0.1:8080 {
+		flush_interval -1
+	}
+}
+
+# Optional LiveKit signalling (guest rooms)
+# livekit.capriojacksoncoded.si {
+# 	reverse_proxy 127.0.0.1:7880
+# }

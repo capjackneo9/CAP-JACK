@@ -1,0 +1,95 @@
+@import "tailwindcss";
+
+/* ── NCVR design tokens ─────────────────────────────────────
+   Royal blue = primary UI · green = active audio/playback
+   pink = live mic & broadcast · gold = NCVR brand & premium */
+@theme {
+  --color-royal: #0A2D9E;
+  --color-royal-400: #2f5bff;
+  --color-royal-300: #6f8cff;
+  --color-signal: #39FF14;
+  --color-live: #FF00A8;
+  --color-gold: #D4AF37;
+  --color-gold-200: #f1dc96;
+  --color-midnight: #070B1E;
+  --color-midnight-800: #0b1230;
+  --color-midnight-700: #111a42;
+  --color-ink: #FFFFFF;
+  --color-muted: #a9b3d6;
+
+  --font-display: "Orbitron", "Eurostile", "Bank Gothic", "Segoe UI", system-ui, sans-serif;
+  --font-sans: "Inter", "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "JetBrains Mono", "SFMono-Regular", ui-monospace, Menlo, Consolas, monospace;
+
+  --shadow-glow-royal: 0 0 24px rgba(47, 91, 255, 0.35);
+  --shadow-glow-signal: 0 0 18px rgba(57, 255, 20, 0.45);
+  --shadow-glow-live: 0 0 28px rgba(255, 0, 168, 0.6);
+  --shadow-glow-gold: 0 0 20px rgba(212, 175, 55, 0.4);
+}
+
+:root { color-scheme: dark; }
+
+html { background: var(--color-midnight); }
+body { color: var(--color-ink); background: transparent; }
+body { font-family: var(--font-sans); -webkit-font-smoothing: antialiased; }
+
+:focus-visible { outline: 2px solid var(--color-gold); outline-offset: 2px; border-radius: 4px; }
+
+@layer components {
+.glass {
+  background: linear-gradient(160deg, rgba(17, 26, 66, 0.72), rgba(7, 11, 30, 0.78));
+  border: 1px solid rgba(111, 140, 255, 0.22);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-radius: 1rem;
+}
+.glass-strong { background: rgba(7, 11, 30, 0.92); border: 1px solid rgba(111, 140, 255, 0.28); border-radius: 1rem; }
+
+.text-gold-gradient {
+  background: linear-gradient(90deg, #f1dc96, #D4AF37 45%, #a07d1c);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+.circuit-bg {
+  background-image:
+    linear-gradient(rgba(47,91,255,0.07) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(47,91,255,0.07) 1px, transparent 1px);
+  background-size: 32px 32px;
+}
+.kicker { font-family: var(--font-mono); letter-spacing: 0.2em; text-transform: uppercase; font-size: 0.72rem; color: var(--color-gold); }
+
+/* Equalizer bars */
+@keyframes eq { 0%,100% { transform: scaleY(0.25) } 50% { transform: scaleY(1) } }
+.eq-bar { transform-origin: bottom; animation: eq 1s ease-in-out infinite; }
+
+/* ON AIR lamp */
+@keyframes onair { 0%,100% { box-shadow: 0 0 18px rgba(255,0,168,.55), inset 0 0 12px rgba(255,255,255,.25) } 50% { box-shadow: 0 0 42px rgba(255,0,168,.95), inset 0 0 16px rgba(255,255,255,.4) } }
+.onair-lit { animation: onair 1.6s ease-in-out infinite; }
+
+/* Fader / range styling */
+input[type="range"].ncvr-range { accent-color: var(--color-signal); }
+input[type="range"].ncvr-range-live { accent-color: var(--color-live); }
+input[type="range"].ncvr-range-gold { accent-color: var(--color-gold); }
+
+.field {
+  width: 100%; border-radius: 0.6rem; background: rgba(7,11,30,0.8); border: 1px solid rgba(111,140,255,0.3);
+  padding: 0.6rem 0.8rem; color: white;
+}
+.field:focus { border-color: var(--color-gold); outline: none; box-shadow: 0 0 0 2px rgba(212,175,55,0.25); }
+.label { display: block; font-size: 0.82rem; color: var(--color-muted); margin-bottom: 0.3rem; }
+
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: .5rem; border-radius: 9999px; padding: .6rem 1.2rem; font-weight: 600; transition: all .15s; }
+.btn:disabled { opacity: .45; cursor: not-allowed; }
+.btn-primary { background: var(--color-royal); color: white; box-shadow: var(--shadow-glow-royal); }
+.btn-primary:hover:not(:disabled) { background: var(--color-royal-400); }
+.btn-gold { background: var(--color-gold); color: var(--color-midnight); }
+.btn-gold:hover:not(:disabled) { background: var(--color-gold-200); }
+.btn-ghost { border: 1px solid rgba(111,140,255,.35); color: white; }
+.btn-ghost:hover:not(:disabled) { border-color: var(--color-gold); }
+.btn-live { background: var(--color-live); color: white; box-shadow: var(--shadow-glow-live); }
+.btn-danger { background: #b4002a; color: white; }
+
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; scroll-behavior: auto !important; }
+}

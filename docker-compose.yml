@@ -1,0 +1,60 @@
+# NCVR application stack. AzuraCast runs separately (its own official Docker
+# install) so website deploys never interrupt the broadcast.
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ncvr
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ncvr
+    volumes: [db-data:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ncvr"]
+      interval: 10s
+      retries: 5
+
+  app:
+    build:
+      context: .
+      args:
+        NEXT_PUBLIC_STREAM_URL: ${NEXT_PUBLIC_STREAM_URL:-}
+        NEXT_PUBLIC_WEBCAST_URL: ${NEXT_PUBLIC_WEBCAST_URL:-}
+        NEXT_PUBLIC_SHOW_LISTENER_COUNT: ${NEXT_PUBLIC_SHOW_LISTENER_COUNT:-false}
+        NEXT_PUBLIC_CONTACT_EMAIL: ${NEXT_PUBLIC_CONTACT_EMAIL:-}
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://ncvr:${POSTGRES_PASSWORD}@db:5432/ncvr?schema=public
+      UPLOAD_DIR: /data/uploads
+    depends_on:
+      db: { condition: service_healthy }
+    volumes: [uploads:/data]
+    # Bound to localhost — the host reverse proxy (Caddy) terminates HTTPS.
+    ports: ["127.0.0.1:3000:3000"]
+
+  # One-off admin tasks (seed, create users, schedule check):
+  #   docker compose run --rm tools npm run db:seed
+  tools:
+    build: { context: ., target: build }
+    profiles: [tools]
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://ncvr:${POSTGRES_PASSWORD}@db:5432/ncvr?schema=public
+    depends_on:
+      db: { condition: service_healthy }
+    entrypoint: []
+    command: ["npm", "run", "schedule:check"]
+
+  # Optional: WebRTC media server for remote guests. Enable with: docker compose --profile guests up -d
+  livekit:
+    image: livekit/livekit-server:v1.8
+    profiles: [guests]
+    restart: unless-stopped
+    command: --config /etc/livekit.yaml
+    volumes: [./deploy/livekit.yaml:/etc/livekit.yaml:ro]
+    network_mode: host
+
+volumes:
+  db-data:
+  uploads:
