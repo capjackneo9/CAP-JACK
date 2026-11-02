@@ -38,7 +38,7 @@ The e2e run covered: all 11 public pages rendering; Now Playing showing API data
 | Guest rooms | LiveKit server + `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET` |
 | Paid review / booking payments | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` |
 | Brand imagery | `public/brand/caprio-marble.jpg`, `public/brand/caprio-banner.jpg`, final logo (not in the repo yet) |
-| `/radio` on the main domain | A redirect or proxy on the existing capriojacksoncoded.si host (not touched) |
+| Domain | DNS records for nitecapviberadio.tech (`@`, `www`, `studio`, `stream`) pointing to the VPS; optional `/radio` shortcut redirect on capriojacksoncoded.si |
 
 ## ⚠️ Must be verified on the real AzuraCast before relying on it
 1. **Webcast handshake.** The transmitter follows AzuraCast Web DJ's protocol (`webcast` sub-protocol, `hello` with mime/user/password, Opus chunks). Test a DJ login on staging. If the handshake differs in your AzuraCast version, use the **AzuraCast Web DJ (fallback)** button in the console, which is the supported first-version path.

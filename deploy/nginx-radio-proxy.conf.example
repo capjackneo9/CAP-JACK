@@ -1,10 +1,10 @@
 # OPTIONAL — only if the existing capriojacksoncoded.si server is nginx you control
 # and you want NCVR to appear under capriojacksoncoded.si/radio instead of redirecting.
 # Review with whoever manages the main site first; this file is NOT applied automatically.
-location /radio      { proxy_pass https://radio.capriojacksoncoded.si; proxy_set_header Host radio.capriojacksoncoded.si; }
-location /_next/     { proxy_pass https://radio.capriojacksoncoded.si; proxy_set_header Host radio.capriojacksoncoded.si; }
-location /api/radio/ { proxy_pass https://radio.capriojacksoncoded.si; proxy_set_header Host radio.capriojacksoncoded.si; proxy_buffering off; }
-location /api/media/ { proxy_pass https://radio.capriojacksoncoded.si; proxy_set_header Host radio.capriojacksoncoded.si; }
-location /brand/     { proxy_pass https://radio.capriojacksoncoded.si; proxy_set_header Host radio.capriojacksoncoded.si; }
+location /radio      { proxy_pass https://nitecapviberadio.tech; proxy_set_header Host nitecapviberadio.tech; }
+location /_next/     { proxy_pass https://nitecapviberadio.tech; proxy_set_header Host nitecapviberadio.tech; }
+location /api/radio/ { proxy_pass https://nitecapviberadio.tech; proxy_set_header Host nitecapviberadio.tech; proxy_buffering off; }
+location /api/media/ { proxy_pass https://nitecapviberadio.tech; proxy_set_header Host nitecapviberadio.tech; }
+location /brand/     { proxy_pass https://nitecapviberadio.tech; proxy_set_header Host nitecapviberadio.tech; }
 # Simpler alternative (works on any host incl. shared hosting / .htaccess):
-#   Redirect 302 /radio https://radio.capriojacksoncoded.si/radio
+#   Redirect 302 /radio https://nitecapviberadio.tech/radio

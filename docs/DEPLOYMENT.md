@@ -5,15 +5,18 @@
 > ⚠️ Reinstalling the VPS operating system erases everything on it. Take a Hostinger snapshot/backup before changing the OS or application template.
 > The existing capriojacksoncoded.si website is **not** modified by anything here.
 
-## 0. DNS
-In the DNS zone for `capriojacksoncoded.si`, add **A records** pointing to the VPS IP (shown in hPanel → VPS → Overview):
+## 0. DNS (domain: nitecapviberadio.tech, managed in Hostinger)
+hPanel → **Domains** → **nitecapviberadio.tech** → **DNS / Nameservers**. Point these records at the VPS IPv4 address (hPanel → VPS → Overview):
 
-| Host | Purpose |
-|---|---|
-| `radio` | Public NCVR site |
-| `studio` | Private studio |
-| `stream` | AzuraCast (admin, API, `/listen` streams, `/webdj`) |
-| `livekit` *(optional)* | Guest rooms |
+| Type | Name | Points to | Purpose |
+|---|---|---|---|
+| **A** | `@` | VPS IP | Public NCVR site (`https://nitecapviberadio.tech`) — *edit the existing `@` record if one exists* |
+| **CNAME** | `www` | `nitecapviberadio.tech` | Redirects to the main address — *edit the existing `www` record if one exists* |
+| **A** | `studio` | VPS IP | Private studio |
+| **A** | `stream` | VPS IP | AzuraCast (admin, API, `/listen` streams, `/webdj`) |
+| **A** | `livekit` *(optional)* | VPS IP | Guest rooms |
+
+Remove any old parking/website-builder `A` or `AAAA` records on `@` / `www` that point elsewhere, or browsers may land on the wrong server.
 
 ## 1. AzuraCast (launch this first — get the 24/7 stream running)
 **Option A (recommended):** hPanel → VPS → Manage → OS & Panel → Operating System → **Application** → *Ubuntu 24.04 with AzuraCast*.
@@ -27,9 +30,9 @@ Then, in the AzuraCast web UI:
 1. Create the station **Nite Cap Vibe Radio**, short name **`ncvr`**, timezone **America/New_York**.
 2. Upload the Caprio Jackson catalog. Create a **General Rotation** playlist named *Caprio Radio Rotation* (the always-on fallback), plus one playlist per scheduled program you want automated.
 3. Station → *Profile* → enable **Streamers/DJs**. Create a streamer account for each DJ (username + password). These are the credentials DJs type into the NCVR console.
-4. System → Settings → set **Base URL** to `https://stream.capriojacksoncoded.si` and enable **Use Web Proxy for Radio**. This makes `/listen/…` and `/webdj/…` work over HTTPS on port 443.
+4. System → Settings → set **Base URL** to `https://stream.nitecapviberadio.tech` and enable **Use Web Proxy for Radio**. This makes `/listen/…` and `/webdj/…` work over HTTPS on port 443.
 5. My Account → **API Keys** → create a key for NCVR. Keep it secret; it goes only in the server `.env`.
-6. Confirm the stream plays at `https://stream.capriojacksoncoded.si/listen/ncvr/radio.mp3` before going further.
+6. Confirm the stream plays at `https://stream.nitecapviberadio.tech/listen/ncvr/radio.mp3` before going further.
 
 ### Free ports 80/443 for the shared reverse proxy
 AzuraCast binds 80/443 by default. To share the VPS, move it to internal ports and let Caddy front everything. In `/var/azuracast/.env`:
@@ -64,32 +67,30 @@ docker compose run --rm tools npm run db:seed
 docker compose run --rm tools npm run user:create -- --email YOU@EXAMPLE.COM --name "Caprio Jackson" --role OWNER
 docker compose run --rm tools npm run schedule:check
 ```
-The owner password is printed once. Sign in at `https://studio.capriojacksoncoded.si`.
+The owner password is printed once. Sign in at `https://studio.nitecapviberadio.tech`.
 
 ### Required `.env` values
 | Variable | Value |
 |---|---|
-| `APP_URL` | `https://radio.capriojacksoncoded.si` |
+| `APP_URL` | `https://nitecapviberadio.tech` |
 | `AUTH_SECRET` | `openssl rand -base64 32` |
 | `POSTGRES_PASSWORD` | a strong random password |
-| `AZURACAST_BASE_URL` | `https://stream.capriojacksoncoded.si` |
+| `AZURACAST_BASE_URL` | `https://stream.nitecapviberadio.tech` |
 | `AZURACAST_STATION_ID` | `ncvr` (or the numeric id) |
 | `AZURACAST_STATION_SHORTCODE` | `ncvr` |
 | `AZURACAST_API_KEY` | key from step 1.5 |
-| `NEXT_PUBLIC_STREAM_URL` | `https://stream.capriojacksoncoded.si/listen/ncvr/radio.mp3` *(optional — otherwise taken from AzuraCast)* |
-| `NEXT_PUBLIC_WEBCAST_URL` | `wss://stream.capriojacksoncoded.si/webdj/ncvr/` |
+| `NEXT_PUBLIC_STREAM_URL` | `https://stream.nitecapviberadio.tech/listen/ncvr/radio.mp3` *(optional — otherwise taken from AzuraCast)* |
+| `NEXT_PUBLIC_WEBCAST_URL` | `wss://stream.nitecapviberadio.tech/webdj/ncvr/` |
 | `LIVEKIT_*`, `STRIPE_*` | optional — see below |
 
 `NEXT_PUBLIC_*` values are compiled in, so rebuild after changing them: `docker compose up -d --build app`.
 
-## 4. capriojacksoncoded.si/radio
-The current site stays where it is. Pick one:
-- **Redirect (simplest, works on any host):** send `/radio` to `https://radio.capriojacksoncoded.si/radio`.
-- **Reverse proxy (keeps the /radio URL):** only if the main site runs on a server you control. See `deploy/nginx-radio-proxy.conf.example`. Test it on staging first.
+## 4. Link from capriojacksoncoded.si (optional)
+NCVR lives on its own domain, so the main Caprio Jackson site needs no changes. To keep `capriojacksoncoded.si/radio` working as a shortcut, add a redirect from `/radio` to `https://nitecapviberadio.tech` on whoever hosts that site.
 
 ## 5. Optional services
-- **Guest rooms (LiveKit):** generate keys with `docker run --rm livekit/livekit-server generate-keys`, put them in `deploy/livekit.yaml` and `.env` (`LIVEKIT_URL=wss://livekit.capriojacksoncoded.si`), uncomment the `livekit` block in the Caddyfile, open **TCP 7881** and **UDP 50000–50200** in the Hostinger firewall, then run `docker compose --profile guests up -d`.
-- **Payments (Stripe):** set `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET`. Add a webhook endpoint `https://radio.capriojacksoncoded.si/api/stripe/webhook` for `checkout.session.completed` and `checkout.session.expired`.
+- **Guest rooms (LiveKit):** generate keys with `docker run --rm livekit/livekit-server generate-keys`, put them in `deploy/livekit.yaml` and `.env` (`LIVEKIT_URL=wss://livekit.nitecapviberadio.tech`), uncomment the `livekit` block in the Caddyfile, open **TCP 7881** and **UDP 50000–50200** in the Hostinger firewall, then run `docker compose --profile guests up -d`.
+- **Payments (Stripe):** set `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET`. Add a webhook endpoint `https://nitecapviberadio.tech/api/stripe/webhook` for `checkout.session.completed` and `checkout.session.expired`.
 
 ## 6. Go-live checklist
 - [ ] Stream plays from the public player; Now Playing shows real track data

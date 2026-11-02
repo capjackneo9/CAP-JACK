@@ -1,13 +1,13 @@
 # NCVR architecture
 
 ```
- Listeners ──HTTPS──► radio.capriojacksoncoded.si  (Next.js app: public pages + persistent player)
+ Listeners ──HTTPS──► nitecapviberadio.tech  (Next.js app: public pages + persistent player)
                          │  /api/radio/nowplaying  (server proxy, 8 s cache)
                          ▼
- Studio staff ─HTTPS─► studio.capriojacksoncoded.si (same app, /studio, Auth.js + RBAC)
+ Studio staff ─HTTPS─► studio.nitecapviberadio.tech (same app, /studio, Auth.js + RBAC)
                          │  server-only API key
                          ▼
-                 AzuraCast  (stream.capriojacksoncoded.si)
+                 AzuraCast  (stream.nitecapviberadio.tech)
                  ├─ Liquidsoap AutoDJ — scheduled playlists, fallback rotation
                  ├─ Icecast — /listen/<station>/radio.mp3  ◄── listeners' audio
                  └─ Harbor webcast input (/webdj/<station>/)  ◄── studio transmitter (DJ login)
