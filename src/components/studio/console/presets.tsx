@@ -6,7 +6,7 @@ import type { PresetData } from "@/lib/console/preset";
  * Each console section registers a slot (get current settings / apply saved
  * settings). The preset bar snapshots or restores all slots at once.
  */
-type SlotKey = "deckA" | "deckB" | "master" | "mic" | "pads" | "queue" | "transmit";
+type SlotKey = "deckA" | "deckB" | "master" | "mic" | "pads" | "queue" | "transmit" | "midi";
 interface Slot { get: () => unknown; set: (v: unknown) => void | Promise<void> }
 interface Registry { register: (k: SlotKey, s: Slot) => () => void; slots: Map<SlotKey, Slot> }
 
@@ -35,7 +35,7 @@ function snapshot(reg: Registry): PresetData {
   return {
     version: 1,
     decks: { A: g("deckA"), B: g("deckB") } as PresetData["decks"],
-    master: g("master"), mic: g("mic"), pads: g("pads"), queue: g("queue"), transmit: g("transmit"),
+    master: g("master"), mic: g("mic"), pads: g("pads"), queue: g("queue"), transmit: g("transmit"), midi: g("midi"),
   };
 }
 
@@ -43,7 +43,7 @@ async function restore(reg: Registry, d: PresetData) {
   const s = (k: SlotKey, v: unknown) => (v !== undefined ? reg.slots.get(k)?.set(v) : undefined);
   await Promise.all([
     s("deckA", d.decks?.A), s("deckB", d.decks?.B), s("master", d.master), s("mic", d.mic),
-    s("pads", d.pads), s("queue", d.queue), s("transmit", d.transmit),
+    s("pads", d.pads), s("queue", d.queue), s("transmit", d.transmit), s("midi", d.midi),
   ]);
 }
 
@@ -135,7 +135,7 @@ export function PresetBar({ ready }: { ready: boolean }) {
       {sel && !sel.isDefault && <button type="button" className="btn btn-gold px-3 py-1.5 text-xs" disabled={busy} onClick={makeDefault}>★ Load on startup</button>}
       {sel?.isDefault && <span className="text-xs text-[var(--color-gold)]">★ Loads on startup</span>}
       {sel && <button type="button" className="btn btn-ghost px-3 py-1.5 text-xs" disabled={busy} onClick={remove}>Delete</button>}
-      <span className="basis-full text-[10px] text-[var(--color-muted)] sm:ml-auto sm:basis-auto">Saves pads/sound bank, deck EQ &amp; faders, crossfader, mic &amp; FX, queue and DJ connection (never your password).</span>
+      <span className="basis-full text-[10px] text-[var(--color-muted)] sm:ml-auto sm:basis-auto">Saves pads/sound bank, deck EQ &amp; faders, crossfader, mic &amp; FX, queue, DJ-controller mapping and DJ connection (never your password).</span>
       {msg && <p role="status" className={`basis-full text-xs ${msg.tone === "err" ? "text-red-300" : "text-[var(--color-signal)]"}`}>{msg.text}</p>}
     </section>
   );

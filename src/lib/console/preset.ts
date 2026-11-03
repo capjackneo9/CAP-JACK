@@ -21,6 +21,7 @@ export const presetDataSchema = z.object({
   }).optional(),
   pads: z.array(pad).max(8).optional(),
   queue: z.array(z.string().max(64)).max(200).optional(),
+  midi: z.record(z.string().max(24), z.string().max(40)).refine((r) => Object.keys(r).length <= 128, "Too many mappings").optional(),
   transmit: z.object({ url: z.string().max(300).optional(), user: z.string().max(120).optional(), bitrate: z.number().int().min(32000).max(320000).optional() }).optional(),
 });
 

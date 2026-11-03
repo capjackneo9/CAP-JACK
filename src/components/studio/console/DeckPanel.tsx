@@ -4,6 +4,8 @@ import type { Deck } from "@/lib/audio/engine";
 import { Knob, MeterBar, Waveform, fmtTime } from "./parts";
 import type { Meter } from "@/lib/audio/engine";
 import { usePresetSlot } from "./presets";
+import { useConsoleControl } from "./controlBus";
+import { scaleRange } from "@/lib/audio/midi";
 
 export interface LibraryTrack { id: string; title: string; artistName: string; category: string }
 
@@ -38,6 +40,25 @@ export function DeckPanel({ deck, meter, library, label, sub, onLoaded }: { deck
   const el = deck?.el;
   const progress = el && el.duration ? el.currentTime / el.duration : 0;
   const disabled = !deck;
+
+  // DJ controller
+  useConsoleControl([deck?.id === "B" ? "deckB" : "deckA"], (a) => {
+    if (!deck) return;
+    const param = a.target.split(".")[1];
+    if (a.kind === "range" && ["trim", "filter", "low", "mid", "high", "fader"].includes(param)) {
+      setEq((prev) => ({ ...prev, [param]: scaleRange(a.target, a.value) }));
+    } else if (a.kind === "button" && param === "play") {
+      if (deck.el.src) { if (deck.playing) deck.pause(); else deck.play().catch((e) => setErr(e.message)); }
+    } else if (a.kind === "button" && param === "cue") {
+      deck.pause(); deck.el.currentTime = 0;
+    } else if (a.kind === "button" && param === "pfl") {
+      setCue((c) => !c);
+    } else if (a.kind === "jog" && deck.el.duration) {
+      const step = deck.playing ? 0.02 : 0.1; // nudge while playing, scrub while paused
+      deck.el.currentTime = Math.min(Math.max(0, deck.el.currentTime + a.delta * step), deck.el.duration - 0.05);
+    }
+    force((n) => n + 1);
+  });
 
   async function load(src: File | string, title: string, artist: string, libraryId: string | null = null) {
     if (!deck) return;

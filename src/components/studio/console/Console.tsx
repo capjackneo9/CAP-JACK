@@ -10,6 +10,9 @@ import { GuestPanel } from "./GuestPanel";
 import { Emblem } from "../../brand/Logo";
 import { PresetBar, PresetRegistryProvider, usePresetSlot } from "./presets";
 import { padUrl, type PadSource } from "@/lib/console/preset";
+import { MidiPanel } from "./MidiPanel";
+import { useConsoleControl } from "./controlBus";
+import { scaleRange } from "@/lib/audio/midi";
 
 type Meters = ReturnType<MixEngine["meters"]>;
 
@@ -79,6 +82,7 @@ export function Console(props: ConsoleProps) {
     <PresetRegistryProvider>
     <div className="space-y-4">
       <PresetBar ready={libReady} />
+      <MidiPanel />
       <TransmitPanel engine={engine} {...props} />
       {libErr && <p className="text-sm text-red-300">Library: {libErr}</p>}
       <div className="grid gap-4 xl:grid-cols-[1fr_auto_1fr]">
@@ -107,6 +111,10 @@ function MasterSection({ engine, meters }: { engine: MixEngine; meters: Meters |
   const [outputs, setOutputs] = useState<MediaDeviceInfo[]>([]);
   const [cueMsg, setCueMsg] = useState<string | null>(null);
   usePresetSlot("master", { crossfade: xf, master, monitor }, (v) => { setXf(v.crossfade); setMaster(v.master); setMonitor(v.monitor); });
+  useConsoleControl(["crossfader", "master"], (a) => {
+    if (a.kind !== "range") return;
+    if (a.target === "crossfader") setXf(a.value); else setMaster(scaleRange("master", a.value));
+  });
   useEffect(() => { engine.setCrossfade(xf); }, [engine, xf]);
   useEffect(() => { engine.master.gain.value = master; }, [engine, master]);
   useEffect(() => { engine.monitorBus.gain.value = monitor; }, [engine, monitor]);
@@ -161,6 +169,12 @@ function MicChannel({ engine, meter }: { engine: MixEngine; meter?: Meter }) {
 
   usePresetSlot("mic", { gain, ducking, duckLevel, echo, reverb, monitor }, (v) => {
     setGain(v.gain); setDucking(v.ducking); setDuckLevel(v.duckLevel); setEcho(v.echo); setReverb(v.reverb); setMonitor(v.monitor);
+  });
+
+  useConsoleControl(["mic"], (a) => {
+    if (a.target === "mic.gain" && a.kind === "range") setGain(scaleRange("mic.gain", a.value));
+    if (a.target === "mic.toggle" && a.kind === "button") { if (enabled) setOpen((o) => !o); else setErr("Enable the mic in the console first, then use the controller's mic button."); }
+    if (a.target === "mic.mute" && a.kind === "button") setMuted((m) => !m);
   });
 
   const refreshDevices = useCallback(() => navigator.mediaDevices.enumerateDevices().then((d) => setDevices(d.filter((x) => x.kind === "audioinput"))), []);
@@ -238,6 +252,10 @@ function PadBank({ engine, library }: { engine: MixEngine; library: LibraryTrack
     if (engine.firePad(i)) { setFlash(i); setTimeout(() => setFlash(null), 180); }
   }, [engine]);
 
+  useConsoleControl(PAD_KEYS.map((_, i) => `pad${i + 1}`), (a) => {
+    if (a.kind === "button") fire(Number(a.target.slice(3)) - 1);
+  });
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement)?.tagName;
@@ -314,6 +332,17 @@ function QueuePanel({ engine, library }: { engine: MixEngine; library: LibraryTr
     setQueue(ids.map((id) => library.find((t) => t.id === id)).filter((t): t is LibraryTrack => Boolean(t)));
   });
   const [msg, setMsg] = useState<string | null>(null);
+  useConsoleControl(["deckA.load", "deckB.load"], async (a) => {
+    if (a.kind !== "button") return;
+    const next = queue[0];
+    const d = a.target.startsWith("deckA") ? engine.decks.A : engine.decks.B;
+    if (!next) return setMsg("Queue is empty — add tracks to load from the controller.");
+    if (d.playing) return setMsg(`Deck ${d.id} is playing — stop it before loading.`);
+    await d.load(`/api/studio/library/${next.id}/audio`, { title: next.title, artist: next.artistName });
+    setQueue((q) => q.slice(1));
+    setMsg(`Loaded “${next.title}” to Deck ${d.id}.`);
+  });
+
   async function loadNext() {
     const next = queue[0];
     if (!next) return;
