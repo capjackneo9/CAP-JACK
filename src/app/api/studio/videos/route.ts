@@ -8,17 +8,34 @@ import { config } from "@/lib/config";
 
 export const runtime = "nodejs";
 
+/** Create the default "Saturday Morning Cartoons" block the first time NCVR TV is opened. */
+async function ensureDefaultBlocks() {
+  if ((await db.tvBlock.count()) > 0) return;
+  await db.tvBlock.create({ data: { title: "Saturday Morning Cartoons", days: [6], startMinute: 8 * 60, endMinute: 12 * 60, kind: "CARTOON", commercials: true } });
+}
+
 export const GET = guarded("video.manage", async () => {
-  const [videos, live] = await Promise.all([
+  await ensureDefaultBlocks();
+  const station = await requireStation();
+  const [videos, live, blocks] = await Promise.all([
     db.musicVideo.findMany({ orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }] }),
     liveVideoStatus(),
+    db.tvBlock.findMany({ orderBy: [{ startMinute: "asc" }] }),
   ]);
-  return { videos, live, rtmpUrl: config.liveVideo.rtmpUrl ?? null, path: config.liveVideo.path };
+  return {
+    videos, live, blocks, rtmpUrl: config.liveVideo.rtmpUrl ?? null, path: config.liveVideo.path,
+    settings: { enabled: station.tvCommercialsEnabled, breakEvery: station.tvBreakEvery, breakSeconds: station.tvBreakSeconds },
+  };
 });
 
 const meta = z.object({
+  kind: z.enum(["MUSIC_VIDEO", "CARTOON", "PROGRAM", "COMMERCIAL"]).default("MUSIC_VIDEO"),
   title: z.string().trim().min(1).max(200),
   artistName: z.string().trim().min(1).max(200),
+  advertiser: z.string().trim().max(200).optional(),
+  startsOn: z.coerce.date().optional(),
+  endsOn: z.coerce.date().optional(),
+  weight: z.coerce.number().int().min(1).max(10).optional(),
   durationSec: z.coerce.number().int().min(5, "Could not read the video length — try another browser or file").max(4 * 3600),
   rightsConfirmed: z.literal("on", { message: "Confirm you have the rights to broadcast this video" }),
 });
@@ -26,6 +43,7 @@ const meta = z.object({
 export const POST = guarded("video.manage", async (req, actor) => {
   const form = await req.formData();
   const d = meta.parse(Object.fromEntries([...form.entries()].filter(([, v]) => typeof v === "string" && v !== "")));
+  if (d.startsOn && d.endsOn && d.endsOn < d.startsOn) throw new HttpError(400, "End date must be after the start date");
   const station = await requireStation();
   try {
     const video = await saveUpload(form.get("video") as File, "video", "videos");
@@ -34,7 +52,11 @@ export const POST = guarded("video.manage", async (req, actor) => {
     const last = await db.musicVideo.aggregate({ _max: { sortOrder: true } });
     const v = await db.musicVideo.create({
       data: {
-        stationId: station.id, title: d.title, artistName: d.artistName, durationSec: d.durationSec, rightsConfirmed: true,
+        stationId: station.id, kind: d.kind, title: d.title, artistName: d.artistName, durationSec: d.durationSec, rightsConfirmed: true,
+        advertiser: d.kind === "COMMERCIAL" ? d.advertiser || d.artistName : null,
+        startsOn: d.kind === "COMMERCIAL" ? d.startsOn ?? null : null,
+        endsOn: d.kind === "COMMERCIAL" ? d.endsOn ?? null : null,
+        weight: d.weight ?? 1,
         filePath: video.key, fileMime: video.type.mime, fileSize: video.size, posterPath: posterUp ? `/api/media/${posterUp.key}` : null,
         sortOrder: (last._max.sortOrder ?? 0) + 10, createdById: actor.id,
       },

@@ -20,7 +20,8 @@ export default async function SchedulePage() {
   const programs = data.programs.map(({ slots: _s, ...p }) => ({ ...p, syncedAt: p.syncedAt?.toISOString() ?? null }));
   return (
     <div className="space-y-4">
-      <PageHeader kicker="24 / 7 programming" title="Program scheduler" />
+      <PageHeader kicker="24 / 7 programming" title="Program scheduler"
+        intro={<>Radio programming below. Video blocks such as <strong>Saturday Morning Cartoons</strong> live in the <a className="text-[var(--color-gold)] hover:underline" href="/studio/videos">NCVR TV schedule →</a></>} />
       {engineErr && <Notice tone="error">AzuraCast: {engineErr}</Notice>}
       <ScheduleEditor initialPrograms={programs} initialSlots={data.programs.flatMap((p) => p.slots)} canEdit={can(actor.role, "schedule.edit")}
         canPublish={can(actor.role, "schedule.publish")} hosts={data.hosts} sponsors={data.sponsors.filter((s) => s.active)} playlists={playlists} />

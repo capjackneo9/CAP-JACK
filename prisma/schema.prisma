@@ -101,19 +101,23 @@ enum InviteStatus {
 }
 
 model Station {
-  id                 String   @id @default(cuid())
-  slug               String   @unique
-  name               String
-  tagline            String?
-  timezone           String   @default("America/New_York")
-  azuracastStationId String?
+  id                   String   @id @default(cuid())
+  slug                 String   @unique
+  name                 String
+  tagline              String?
+  timezone             String   @default("America/New_York")
+  azuracastStationId   String?
   // Rotation goals in whole percent; must sum to 100
-  rotationCaprioPct  Int      @default(75)
-  rotationIndiePct   Int      @default(15)
-  rotationGuestPct   Int      @default(10)
-  showListenerCount  Boolean  @default(false)
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  rotationCaprioPct    Int      @default(75)
+  rotationIndiePct     Int      @default(15)
+  rotationGuestPct     Int      @default(10)
+  showListenerCount    Boolean  @default(false)
+  // NCVR TV commercial breaks
+  tvCommercialsEnabled Boolean  @default(true)
+  tvBreakEvery         Int      @default(3)
+  tvBreakSeconds       Int      @default(90)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
 
   programs    Program[]
   tracks      Track[]
@@ -420,12 +424,27 @@ model ConsolePadAsset {
   @@index([userId])
 }
 
-/// Music videos for the NCVR TV rotation.
+enum TvKind {
+  MUSIC_VIDEO
+  CARTOON
+  PROGRAM
+  COMMERCIAL
+}
+
+/// NCVR TV media: music videos, cartoons, shows and commercials.
 model MusicVideo {
   id              String      @id @default(cuid())
   stationId       String
+  kind            TvKind      @default(MUSIC_VIDEO)
   title           String
   artistName      String
+  /// Commercials: who the ad is for (shown with the "Advertisement" label)
+  advertiser      String?
+  /// Commercials: flight dates (inclusive). Null = no limit.
+  startsOn        DateTime?
+  endsOn          DateTime?
+  /// Commercials: relative chance of being picked for a break (1–10)
+  weight          Int         @default(1)
   filePath        String
   fileMime        String
   fileSize        Int
@@ -438,7 +457,21 @@ model MusicVideo {
   createdAt       DateTime    @default(now())
   updatedAt       DateTime    @updatedAt
 
-  @@index([status, sortOrder])
+  @@index([kind, status, sortOrder])
+}
+
+/// NCVR TV schedule block, e.g. "Saturday Morning Cartoons" Sat 8 AM–12 PM ET.
+model TvBlock {
+  id          String   @id @default(cuid())
+  title       String
+  days        Int[]
+  startMinute Int
+  endMinute   Int
+  kind        TvKind
+  commercials Boolean  @default(true)
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }
 
 enum ApplicationStatus {

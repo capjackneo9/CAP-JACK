@@ -8,6 +8,11 @@ const body = z.object({
   title: z.string().trim().min(1).max(200).optional(),
   artistName: z.string().trim().min(1).max(200).optional(),
   sortOrder: z.number().int().min(0).max(100000).optional(),
+  kind: z.enum(["MUSIC_VIDEO", "CARTOON", "PROGRAM", "COMMERCIAL"]).optional(),
+  advertiser: z.string().trim().max(200).nullable().optional(),
+  startsOn: z.coerce.date().nullable().optional(),
+  endsOn: z.coerce.date().nullable().optional(),
+  weight: z.number().int().min(1).max(10).optional(),
 });
 
 export const PATCH = guarded<{ id: string }>("video.manage", async (req, actor, { id }) => {
@@ -18,7 +23,7 @@ export const PATCH = guarded<{ id: string }>("video.manage", async (req, actor, 
     b.action === "approve" ? { status: "APPROVED" as const }
     : b.action === "reject" ? { status: "REJECTED" as const }
     : b.action === "archive" ? { status: "ARCHIVED" as const }
-    : { title: b.title, artistName: b.artistName, sortOrder: b.sortOrder };
+    : { title: b.title, artistName: b.artistName, sortOrder: b.sortOrder, kind: b.kind, advertiser: b.advertiser, startsOn: b.startsOn, endsOn: b.endsOn, weight: b.weight };
   if (b.action === "approve" && !v.rightsConfirmed) throw new HttpError(400, "Rights must be confirmed before a video can air");
   const updated = await db.musicVideo.update({ where: { id }, data });
   await audit({ userId: actor.id, action: `video.${b.action}`, target: `video:${id}`, liveImpact: b.action !== "update" });
