@@ -104,7 +104,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       title: t?.title ?? "Nite Cap Vibe Radio",
       artist: t?.artist ?? "NCVR",
       album: np?.program?.title ?? "NCVR · 24/7",
-      artwork: [{ src: t?.art || "/brand/ncvr-logo.svg", sizes: "512x512" }],
+      artwork: [{ src: t?.art || "/brand/ncvr-emblem-512.png", sizes: "512x512" }],
     });
     navigator.mediaSession.setActionHandler("play", () => dispatch({ type: "PLAY" }));
     navigator.mediaSession.setActionHandler("pause", () => dispatch({ type: "PAUSE" }));

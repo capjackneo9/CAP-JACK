@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { BRAND } from "@/lib/brand";
 import { BrandImage } from "@/components/brand/BrandImage";
+import { Wordmark } from "@/components/brand/Logo";
 import { NowPlayingCard } from "@/components/player/NowPlayingCard";
 import { getPrograms, scheduledNow } from "@/lib/queries";
 import { config } from "@/lib/config";
@@ -20,6 +21,7 @@ export default async function RadioHome() {
     <div className="space-y-16">
       <section className="grid items-center gap-10 lg:grid-cols-2">
         <div>
+          <Wordmark priority className="mb-6 max-w-xl" />
           <div className="kicker">01 // {BRAND.owner} Network</div>
           <h1 className="mt-4 font-[family-name:var(--font-display)] text-4xl font-black leading-tight sm:text-6xl">
             THE NIGHT <span className="text-gold-gradient">HAS A SOUND.</span>
@@ -63,7 +65,7 @@ export default async function RadioHome() {
       </section>
 
       <section className="grid items-center gap-8 lg:grid-cols-[1.2fr_1fr]">
-        <BrandImage src={BRAND.editorialBanner} alt="Caprio Jackson editorial banner" width={1200} height={500} glow="gold" />
+        <BrandImage src={BRAND.editorialBanner} alt="Caprio Jackson editorial banner" width={1200} height={500} glow="gold" fallbackSrc={BRAND.wordmark} />
         <div>
           <div className="kicker">Featured artist</div>
           <h2 className="mt-2 font-[family-name:var(--font-display)] text-3xl font-black">CAPRIO JACKSON</h2>

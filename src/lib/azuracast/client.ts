@@ -35,7 +35,11 @@ async function request<T>(path: string, init: RequestInit & { admin?: boolean } 
   const headers = new Headers(init.headers);
   headers.set("Accept", "application/json");
   if (init.body && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
-  if (init.admin && apiKey) headers.set("X-API-Key", apiKey);
+  if (init.admin && apiKey) {
+    // AzuraCast accepts either header; send both for compatibility across versions.
+    headers.set("X-API-Key", apiKey);
+    headers.set("Authorization", `Bearer ${apiKey}`);
+  }
   let res: Response;
   try {
     res = await fetch(`${baseUrl}${path}`, { ...init, headers, cache: "no-store", signal: AbortSignal.timeout(TIMEOUT_MS) });
@@ -45,7 +49,10 @@ async function request<T>(path: string, init: RequestInit & { admin?: boolean } 
   if (!res.ok) {
     let detail = "";
     try { const j = await res.json(); detail = j?.message ?? j?.formatted_message ?? ""; } catch { /* ignore */ }
-    throw new BroadcastEngineError(`AzuraCast ${res.status} on ${path}${detail ? `: ${detail}` : ""}`, res.status);
+    const hint = init.admin && (res.status === 401 || res.status === 403)
+      ? " — AzuraCast rejected the API key. Check AZURACAST_API_KEY in .env (no spaces or quotes) and that the key's owner is an AzuraCast administrator."
+      : "";
+    throw new BroadcastEngineError(`AzuraCast ${res.status} on ${path}${detail ? `: ${detail}` : ""}${hint}`, res.status);
   }
   if (res.status === 204) return undefined as T;
   const text = await res.text();

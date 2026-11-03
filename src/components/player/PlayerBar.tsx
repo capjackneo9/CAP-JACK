@@ -14,7 +14,7 @@ export function PlayerBar() {
       <PlayButton size={46} />
       <div className="hidden h-11 w-11 shrink-0 overflow-hidden rounded-lg border border-white/10 sm:block">
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={t?.art || "/brand/ncvr-logo.svg"} alt="" className="h-full w-full object-cover" />
+        <img src={t?.art || "/brand/ncvr-emblem-192.png"} alt="" className="h-full w-full object-cover" />
       </div>
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">

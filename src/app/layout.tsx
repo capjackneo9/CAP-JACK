@@ -6,8 +6,14 @@ export const metadata: Metadata = {
   metadataBase: new URL(process.env.APP_URL || "http://localhost:3000"),
   title: { default: `${BRAND.name} — ${BRAND.short}`, template: `%s · ${BRAND.short}` },
   description: `${BRAND.tagline} 24/7 digital radio from ${BRAND.owner}.`,
-  icons: { icon: "/favicon.svg" },
-  openGraph: { title: BRAND.name, description: BRAND.tagline, images: [BRAND.logo] },
+  icons: {
+    icon: [
+      { url: "/brand/ncvr-emblem-64.png", sizes: "64x64", type: "image/png" },
+      { url: "/brand/ncvr-emblem-192.png", sizes: "192x192", type: "image/png" },
+    ],
+    apple: "/brand/ncvr-emblem-192.png",
+  },
+  openGraph: { title: BRAND.name, description: BRAND.tagline, images: [BRAND.logoSquare] },
 };
 
 export const viewport: Viewport = { themeColor: "#070B1E", width: "device-width", initialScale: 1 };

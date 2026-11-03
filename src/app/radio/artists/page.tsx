@@ -16,7 +16,7 @@ export default async function ArtistsPage() {
       {error && <Notice tone="warn">Artist directory unavailable: the station database is not connected.</Notice>}
       {lead && (
         <section className="relative overflow-hidden rounded-3xl">
-          <BrandImage src={lead.imagePath} alt={`${lead.name} editorial banner`} width={1400} height={560} glow="gold" />
+          <BrandImage src={lead.imagePath} alt={`${lead.name} editorial banner`} width={1400} height={560} glow="gold" fallbackSrc="/brand/ncvr-wordmark.webp" />
           <div className="mt-4 max-w-2xl">
             {lead.isCaprio && <Badge tone="gold">Station founder</Badge>}
             <h2 className="mt-2 font-[family-name:var(--font-display)] text-3xl font-black">{lead.name}</h2>

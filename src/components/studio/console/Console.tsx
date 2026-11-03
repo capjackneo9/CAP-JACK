@@ -7,6 +7,7 @@ import { useBroadcast } from "../useBroadcast";
 import { DeckPanel, type LibraryTrack } from "./DeckPanel";
 import { ConfirmAction, Knob, MeterBar, fmtTime } from "./parts";
 import { GuestPanel } from "./GuestPanel";
+import { Emblem } from "../../brand/Logo";
 
 type Meters = ReturnType<MixEngine["meters"]>;
 
@@ -59,6 +60,7 @@ export function Console(props: ConsoleProps) {
     return (
       <div className="glass grid min-h-[50vh] place-items-center p-8 text-center">
         <div className="max-w-lg space-y-4">
+          <div className="mx-auto w-36"><Emblem /></div>
           <div className="kicker">NCVR // Control system</div>
           <h1 className="font-[family-name:var(--font-display)] text-3xl font-black">Broadcast studio</h1>
           <p className="text-sm text-[var(--color-muted)]">Powering on starts the browser audio engine. Nothing is transmitted until you connect to the broadcast server and AzuraCast confirms your live source.</p>

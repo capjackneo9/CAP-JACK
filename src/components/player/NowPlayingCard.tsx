@@ -18,7 +18,7 @@ export function NowPlayingCard({ fallbackArt, large = false }: { fallbackArt?: R
           ) : (
             fallbackArt ?? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src="/brand/ncvr-logo.svg" alt="NCVR" className="aspect-square w-full rounded-2xl" />
+              <img src="/brand/ncvr-emblem-512.png" alt="NCVR — Nite Cap Vibe Radio" className="aspect-square w-full rounded-2xl object-contain" />
             )
           )}
           {n?.live.isLive && (
@@ -65,7 +65,7 @@ export function RecentTracks() {
       {recent.map((r, i) => (
         <li key={`${r.playedAt}-${i}`} className="flex items-center gap-3 py-2">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={r.art || "/brand/ncvr-logo.svg"} alt="" className="h-10 w-10 rounded object-cover" />
+          <img src={r.art || "/brand/ncvr-emblem-192.png"} alt="" className="h-10 w-10 rounded object-cover" />
           <div className="min-w-0 flex-1">
             <div className="truncate text-sm font-semibold">{r.title}</div>
             <div className="truncate text-xs text-[var(--color-muted)]">{r.artist}</div>

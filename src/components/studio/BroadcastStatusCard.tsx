@@ -23,7 +23,7 @@ export function BroadcastStatusCard({ scheduled }: { scheduled: { title: string;
       {np && (
         <div className="mt-4 grid gap-4 sm:grid-cols-[96px_1fr]">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={np.track?.art || "/brand/ncvr-logo.svg"} alt="" className="h-24 w-24 rounded-xl object-cover" />
+          <img src={np.track?.art || "/brand/ncvr-emblem-192.png"} alt="" className="h-24 w-24 rounded-xl object-cover" />
           <div className="space-y-1 text-sm">
             <div className="text-lg font-semibold">{np.track ? `${np.track.title} — ${np.track.artist}` : "No track reported"}</div>
             {np.track?.playlist && <div className="text-[var(--color-muted)]">Playlist: {np.track.playlist}</div>}

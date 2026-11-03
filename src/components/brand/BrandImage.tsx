@@ -8,8 +8,12 @@ import Image from "next/image";
  * substitute face.
  */
 export function BrandImage({
-  src, alt, width, height, className = "", glow = "royal",
-}: { src: string | null | undefined; alt: string; width: number; height: number; className?: string; glow?: "royal" | "gold" | "none" }) {
+  src, alt, width, height, className = "", glow = "royal", fallbackSrc = "/brand/ncvr-emblem.webp",
+}: {
+  src: string | null | undefined; alt: string; width: number; height: number; className?: string; glow?: "royal" | "gold" | "none";
+  /** Shown (contained, on a dark stage) when `src` has not been supplied yet. null = show the "artwork pending" frame. */
+  fallbackSrc?: string | null;
+}) {
   const exists = src && src.startsWith("/") && existsSync(path.join(process.cwd(), "public", src));
   const ring = glow === "gold" ? "shadow-[var(--shadow-glow-gold)] border-[var(--color-gold)]/50" : glow === "royal" ? "shadow-[var(--shadow-glow-royal)] border-[var(--color-royal-400)]/40" : "border-white/10";
   if (src && src.startsWith("/api/media/")) {
@@ -24,6 +28,15 @@ export function BrandImage({
     return (
       <div className={`relative overflow-hidden rounded-2xl border ${ring} ${className}`} style={{ aspectRatio: `${width}/${height}` }}>
         <Image src={src!} alt={alt} fill sizes={`${width}px`} className="object-cover" />
+      </div>
+    );
+  }
+  if (fallbackSrc) {
+    return (
+      <div className={`relative grid place-items-center overflow-hidden rounded-2xl border bg-[radial-gradient(circle_at_50%_40%,#0b1a5c_0%,#070B1E_70%)] ${ring} ${className}`}
+        style={{ aspectRatio: `${width}/${height}` }}>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={fallbackSrc} alt={alt} className="h-full w-full object-contain p-[6%] drop-shadow-[0_0_24px_rgba(47,91,255,0.4)]" />
       </div>
     );
   }

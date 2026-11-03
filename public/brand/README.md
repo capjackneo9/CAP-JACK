@@ -1,13 +1,12 @@
-# NCVR brand assets (replaceable)
-
-Drop the official files here using these exact names — every page picks them up automatically:
+# NCVR brand assets
 
 | File | Used for |
 |---|---|
-| `ncvr-logo.svg` (or replace `ncvr-logo.png` + update `src/lib/brand.ts`) | Header, player, favicon, show fallback art |
-| `caprio-marble.jpg` | Image 1 — white cracked marble portrait. Now Playing art, host profile, featured shows |
-| `caprio-banner.jpg` | Image 2 — black/white/red editorial banner. Featured artist section, artist profile |
+| `ncvr-emblem.webp` | Round badge (mic, headphones, tower) — header, login, console, fallback show/host art |
+| `ncvr-emblem-512.png` / `-192.png` / `-64.png` | Square icons — Now Playing fallback art, lock-screen artwork, favicon, social preview |
+| `ncvr-wordmark.webp` | Wide "NCVR · Nite Cap Vibe Radio" text logo — header, homepage hero, footer, banner fallback |
+| `caprio-marble.jpg` *(add)* | Image 1 — marble portrait. Replaces the emblem on About, host and Now Playing art |
+| `caprio-banner.jpg` *(add)* | Image 2 — editorial banner. Replaces the wordmark in the featured-artist section |
 
-The current `ncvr-logo.svg` is a placeholder vector mark in the station palette. Replace it with the
-final NCVR logo when supplied. Portrait and banner are **not** substituted with generic faces —
-until the files exist, pages show a labelled "artwork pending" frame.
+Logos were cut out from the supplied artwork (white background removed). Until the Caprio photos are
+added, those spots show the NCVR logos instead.

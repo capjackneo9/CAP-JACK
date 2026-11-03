@@ -27,7 +27,7 @@ export default async function StudioLayout({ children }: { children: React.React
     <div className="circuit-bg min-h-screen">
       <div className="mx-auto grid max-w-[1600px] gap-4 p-3 lg:grid-cols-[230px_1fr] lg:p-4">
         <aside className="glass-strong flex flex-col gap-4 p-3 lg:sticky lg:top-4 lg:h-[calc(100vh-2rem)]">
-          <Logo href="/studio" />
+          <Logo href="/studio" size={40} />
           <div className="kicker hidden lg:block">NCVR // Control system</div>
           <StudioNav items={items} />
           <div className="mt-auto hidden border-t border-white/10 pt-3 text-xs text-[var(--color-muted)] lg:block">
