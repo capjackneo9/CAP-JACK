@@ -72,7 +72,8 @@ describe("ON AIR indicator", () => {
   });
   it("shows ON AIR only when AzuraCast confirms our live source", () => {
     expect(deriveOnAir({ transport: "streaming", engineLive: true, engineStreamer: "Caprio", ourStreamer: "caprio" })).toBe("ON_AIR");
-    expect(deriveOnAir({ transport: "streaming", engineLive: true, engineStreamer: "OtherDJ", ourStreamer: "caprio" })).toBe("UNCONFIRMED");
+    // AzuraCast reports the display name ("Caprio Jackson"), not the login ("caprio")
+    expect(deriveOnAir({ transport: "streaming", engineLive: true, engineStreamer: "Caprio Jackson", ourStreamer: "caprio" })).toBe("ON_AIR");
     expect(deriveOnAir({ transport: "disconnected", engineLive: true, engineStreamer: "OtherDJ", ourStreamer: "caprio" })).toBe("OTHER_DJ_LIVE");
     expect(deriveOnAir({ transport: "error", engineLive: true, engineStreamer: "caprio", ourStreamer: "caprio" })).toBe("FAULT");
   });

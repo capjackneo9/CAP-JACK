@@ -21,13 +21,13 @@ export function deriveOnAir(params: {
   engineStreamer: string | null;
   ourStreamer: string | null;
 }): OnAirState {
-  const { transport, engineLive, engineStreamer, ourStreamer } = params;
-  const sameStreamer = Boolean(
-    ourStreamer && engineStreamer && engineStreamer.trim().toLowerCase() === ourStreamer.trim().toLowerCase(),
-  );
+  const { transport, engineLive } = params;
   if (transport === "error") return "FAULT";
   if (transport === "connecting" || transport === "authenticating") return "CONNECTING";
-  if (transport === "streaming") return engineLive && (sameStreamer || !engineStreamer) ? "ON_AIR" : "UNCONFIRMED";
+  // AzuraCast reports the DJ's *display name*, not the login, so names can't be compared.
+  // Our authenticated socket is open AND the engine says a live source is on air → that's us
+  // (AzuraCast accepts only one live source at a time).
+  if (transport === "streaming") return engineLive ? "ON_AIR" : "UNCONFIRMED";
   // disconnected
   return engineLive ? "OTHER_DJ_LIVE" : "OFF_AIR";
 }

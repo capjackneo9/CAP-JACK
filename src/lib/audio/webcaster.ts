@@ -38,7 +38,7 @@ export class Webcaster {
   connect(url: string, user: string, password: string, stream: MediaStream, bitrate = 128000) {
     if (this.ws) this.disconnect();
     const mime = Webcaster.supportedMime();
-    if (!mime) return this.set("error", "This browser cannot encode audio for broadcasting (MediaRecorder/Opus unsupported).");
+    if (!mime) return this.set("error", "This browser can't broadcast audio (no Opus encoder). Use Chrome or Edge on a computer — Safari/iPhone/iPad are not supported for going live.");
     if (!/^wss?:\/\//.test(url)) return this.set("error", "Webcast URL must start with wss://");
     this.set("connecting");
     this.bytesSent = 0;
@@ -61,13 +61,15 @@ export class Webcaster {
       // Liquidsoap closes the socket on rejected credentials; surviving this window means accepted.
       this.confirmTimer = setTimeout(() => { if (ws.readyState === WebSocket.OPEN) this.set("streaming"); }, 2500);
     };
-    ws.onerror = () => this.set("error", "Webcast connection error");
+    ws.onerror = () => this.set("error", this.state === "connecting"
+      ? "Couldn't reach the DJ input. Check the Webcast URL (wss://stream.nitecapviberadio.tech/webdj/ncvr/) and that AzuraCast's “Use Web Proxy for Radio” is on."
+      : "Webcast connection error");
     ws.onclose = (ev) => {
       if (this.confirmTimer) clearTimeout(this.confirmTimer);
       if (this.rec && this.rec.state !== "inactive") this.rec.stop();
       this.rec = null;
       this.ws = null;
-      if (this.state === "authenticating") this.set("error", `Rejected by broadcast server (code ${ev.code}). Check DJ credentials and that the DJ is allowed to stream now.`);
+      if (this.state === "authenticating") this.set("error", `The station refused the DJ login (code ${ev.code}). Check the DJ username/password (the AzuraCast streamer account, not your website login), that the account is active, and that "Enforce schedule" is off for that DJ.`);
       else if (this.state !== "disconnected" && this.state !== "error") this.set(ev.wasClean ? "disconnected" : "error", ev.wasClean ? null : `Connection lost (code ${ev.code})`);
     };
   }
