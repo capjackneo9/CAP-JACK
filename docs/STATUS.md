@@ -33,7 +33,7 @@ The e2e run covered: all 11 public pages rendering; Now Playing showing API data
 - **Console presets:** save and load the whole console setup (pad sound bank, including sounds loaded from your computer, deck EQ and faders, crossfader, master and monitor, mic and FX, queue, DJ connection without the password). One preset per user can load automatically when the console powers on. *Verified in a browser:* save → reload → auto-restore.
 - **NCVR TV** (`/radio/tv`): music-video channel where every viewer sees the same video at the same moment, with an 80s-style lower third and channel bug. It switches to a live OBS feed (MediaMTX → HLS) automatically. *Verified:* upload → approve → plays in sync with the channel clock. The live feed path needs MediaMTX on the VPS (not testable here).
 - **Join the team** (`/radio/join`): internship application with interest areas and an optional PDF résumé, reviewed under **Studio → Team applications**. *Verified* end to end.
-- The NCVR TV logo file still needs adding as `public/brand/ncvr-tv-logo.webp`. The page shows "NCVR TV" text until then.
+- NCVR TV logo added: TV page header, on-screen channel bug, homepage promo and studio channel manager.
 
 ## 🔑 Needs integration credentials or server setup
 | Feature | Needs |

@@ -80,6 +80,17 @@ export default async function RadioHome() {
         </div>
       </section>
 
+      <Link href="/radio/tv" className="glass group grid items-center gap-6 overflow-hidden p-6 transition hover:border-[var(--color-gold)] md:grid-cols-[1.1fr_1fr]">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={BRAND.tvLogo} alt="NCVR TV" className="w-full max-w-lg drop-shadow-[0_0_24px_rgba(140,60,255,0.35)] transition group-hover:scale-[1.02]" />
+        <div>
+          <div className="kicker">Now on screen</div>
+          <h2 className="mt-2 font-[family-name:var(--font-display)] text-2xl font-black">Music videos around the clock</h2>
+          <p className="mt-2 text-[var(--color-muted)]">NCVR TV plays music videos non-stop and switches to live video when a host goes live on camera.</p>
+          <span className="btn btn-gold mt-4">Watch NCVR TV</span>
+        </div>
+      </Link>
+
       <section className="grid gap-4 sm:grid-cols-3">
         {[
           ["Weekend Metaphysics", "Three-hour Saturday and Sunday windows — The Metaphysical Matrix and University of the Soul — with music breaks.", "/radio/shows/the-metaphysical-matrix"],

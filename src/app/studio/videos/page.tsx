@@ -8,7 +8,9 @@ export default async function VideosPage() {
   await requirePagePermission("video.manage");
   return (
     <div className="space-y-4">
-      <PageHeader kicker="Video channel" title="NCVR TV" intro="Music-video rotation and live video feed for nitecapviberadio.tech/radio/tv." />
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src="/brand/ncvr-tv-logo.webp" alt="NCVR TV" className="w-64" />
+      <PageHeader kicker="Video channel" title="Channel manager" intro="Music-video rotation and live video feed for nitecapviberadio.tech/radio/tv." />
       <VideoManager />
     </div>
   );
