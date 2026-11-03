@@ -107,3 +107,22 @@ describe("Saturday Vibe Amerime — 16 × 7-min shows, 2-min break every 4 shows
     expect(new Set(items.map((i) => (i as { id: string }).id)).size).toBe(4);
   });
 });
+
+describe("Saturday Vibe Amerime — 30-second commercial after every show", async () => {
+  const { channelNow, fillBreak, TV_EPOCH } = await import("@/lib/tv/rotation");
+  const eps = Array.from({ length: 16 }, (_, i) => ({ id: `ep${i + 1}`, durationSec: 420 }));
+  const spots = Array.from({ length: 16 }, (_, i) => ({ id: `ad${i + 1}`, durationSec: 30, weight: 1 }));
+  const cfg = { enabled: true, breakEvery: 1, breakSeconds: 30 };
+  const at = (min: number) => TV_EPOCH + min * 60_000;
+  it("show, 30-sec ad, show … and loops at exactly 2 hours", () => {
+    expect(channelNow(eps, spots, cfg, at(0))).toMatchObject({ videoId: "ep1", offsetSec: 0 });
+    expect(channelNow(eps, spots, cfg, at(7.25))?.type).toBe("commercial");            // 9:07:15
+    expect(channelNow(eps, spots, cfg, at(7.5))).toMatchObject({ videoId: "ep2", offsetSec: 0 }); // 9:07:30
+    expect(channelNow(eps, spots, cfg, at(7.5 * 15))).toMatchObject({ videoId: "ep16", offsetSec: 0 }); // 10:52:30
+    expect(channelNow(eps, spots, cfg, at(119.75))?.type).toBe("commercial");          // 10:59:45
+    expect(channelNow(eps, spots, cfg, at(120))).toMatchObject({ videoId: "ep1", offsetSec: 0 });
+  });
+  it("each break is exactly one 30-second ad", () => {
+    expect(fillBreak(spots, 30, 5)).toEqual([expect.objectContaining({ type: "commercial", durationSec: 30, startSec: 0 })]);
+  });
+});
