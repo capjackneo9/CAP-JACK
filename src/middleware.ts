@@ -6,7 +6,7 @@ const { auth } = NextAuth(authConfig);
 
 /**
  * - studio.<domain> → serves /studio (host-based rewrite)
- * - /studio and /api/studio require studio.access (checked again server-side in every handler)
+ * - /studio pages require studio.access (and every API handler checks its own permission)
  */
 export default auth((req) => {
   const host = req.headers.get("host") ?? "";
@@ -16,12 +16,11 @@ export default auth((req) => {
     to.pathname = `/studio${url.pathname === "/" ? "" : url.pathname}`;
     return NextResponse.rewrite(to);
   }
-  if (url.pathname.startsWith("/api/studio") && !req.auth) {
-    return NextResponse.json({ error: "Sign-in required" }, { status: 401 });
-  }
   return undefined;
 });
 
 export const config = {
-  matcher: ["/studio/:path*", "/api/studio/:path*", "/((?!_next/static|_next/image|favicon|brand).*)"],
+  // API routes are excluded on purpose: every route checks permissions itself, and keeping
+  // large uploads (videos, audio) out of middleware avoids request-body size limits.
+  matcher: ["/studio/:path*", "/((?!api|_next/static|_next/image|favicon|brand).*)"],
 };

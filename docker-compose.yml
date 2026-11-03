@@ -46,6 +46,16 @@ services:
     entrypoint: []
     command: ["npm", "run", "schedule:check"]
 
+  # Optional: NCVR TV live video (OBS → RTMP in, HLS out). Enable with: docker compose --profile tv up -d
+  mediamtx:
+    image: bluenviron/mediamtx:1.9.3
+    profiles: [tv]
+    restart: unless-stopped
+    volumes: [./deploy/mediamtx.yml:/mediamtx.yml:ro]
+    ports:
+      - "1935:1935"            # RTMP ingest from OBS (public)
+      - "127.0.0.1:8888:8888"  # HLS playback, served to viewers through Caddy at /live-hls/
+
   # Optional: WebRTC media server for remote guests. Enable with: docker compose --profile guests up -d
   livekit:
     image: livekit/livekit-server:v1.8

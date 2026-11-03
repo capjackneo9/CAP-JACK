@@ -15,6 +15,14 @@ export const config = {
   timezone: env("STATION_TIMEZONE") ?? "America/New_York",
   uploadDir: env("UPLOAD_DIR") ?? "./uploads",
   maxUploadBytes: Number(env("MAX_UPLOAD_MB") ?? "200") * 1024 * 1024,
+  maxVideoBytes: Number(env("MAX_VIDEO_MB") ?? "1024") * 1024 * 1024,
+  /** Live video (MediaMTX). API is internal; HLS is served to browsers under /live-hls/ via Caddy. */
+  liveVideo: {
+    apiUrl: env("MEDIAMTX_API_URL"),
+    path: env("MEDIAMTX_PATH") ?? "live",
+    hlsPublicBase: env("NEXT_PUBLIC_LIVE_HLS_BASE") ?? "/live-hls",
+    rtmpUrl: env("LIVE_RTMP_URL"),
+  },
   azuracast: {
     baseUrl: env("AZURACAST_BASE_URL")?.replace(/\/+$/, ""),
     stationId: env("AZURACAST_STATION_ID"),
@@ -37,6 +45,7 @@ export const integrations = {
   azuracastAdmin: () => Boolean(config.azuracast.baseUrl && config.azuracast.stationId && config.azuracast.apiKey),
   livekit: () => Boolean(config.livekit.url && config.livekit.apiKey && config.livekit.apiSecret),
   stripe: () => Boolean(config.stripe.secretKey),
+  liveVideo: () => Boolean(config.liveVideo.apiUrl),
 };
 
 export function integrationStatus() {
@@ -47,6 +56,7 @@ export function integrationStatus() {
     streamUrlOverride: Boolean(process.env.NEXT_PUBLIC_STREAM_URL),
     livekit: integrations.livekit(),
     stripe: integrations.stripe(),
+    liveVideo: integrations.liveVideo(),
     database: Boolean(env("DATABASE_URL")),
     authSecret: Boolean(env("AUTH_SECRET")),
   };

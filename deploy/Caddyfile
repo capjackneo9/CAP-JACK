@@ -5,7 +5,13 @@
 # Public NCVR site. The app redirects / to /radio.
 nitecapviberadio.tech {
 	encode zstd gzip
-	reverse_proxy 127.0.0.1:3000
+	# NCVR TV live video (MediaMTX HLS)
+	handle_path /live-hls/* {
+		reverse_proxy 127.0.0.1:8888
+	}
+	handle {
+		reverse_proxy 127.0.0.1:3000
+	}
 }
 
 www.nitecapviberadio.tech {
@@ -15,7 +21,13 @@ www.nitecapviberadio.tech {
 # Private studio — same app; middleware serves /studio for this host.
 studio.nitecapviberadio.tech {
 	encode zstd gzip
-	reverse_proxy 127.0.0.1:3000
+	# NCVR TV live video (MediaMTX HLS)
+	handle_path /live-hls/* {
+		reverse_proxy 127.0.0.1:8888
+	}
+	handle {
+		reverse_proxy 127.0.0.1:3000
+	}
 }
 
 # AzuraCast: admin UI, public API, /listen streams and the /webdj websocket.

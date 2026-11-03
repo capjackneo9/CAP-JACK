@@ -26,6 +26,7 @@
   "dependencies": {
     "@prisma/client": "^6.19.3",
     "bcryptjs": "^3.0.3",
+    "hls.js": "^1.7.4",
     "livekit-client": "^2.23.0",
     "livekit-server-sdk": "^2.19.2",
     "motion": "^14.9.0",

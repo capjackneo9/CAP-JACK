@@ -29,12 +29,19 @@ The e2e run covered: all 11 public pages rendering; Now Playing showing API data
 - Guest invites: hashed, expiring, revocable links shown once; waiting room with mic check and consent capture
 - Rotation goals (75/15/10) with validation; listener-count display toggle; user management (owner only); audit log of approvals, schedule saves/publishes, live actions, role changes and payments
 
+### Added 2026-11-03
+- **Console presets:** save and load the whole console setup (pad sound bank, including sounds loaded from your computer, deck EQ and faders, crossfader, master and monitor, mic and FX, queue, DJ connection without the password). One preset per user can load automatically when the console powers on. *Verified in a browser:* save → reload → auto-restore.
+- **NCVR TV** (`/radio/tv`): music-video channel where every viewer sees the same video at the same moment, with an 80s-style lower third and channel bug. It switches to a live OBS feed (MediaMTX → HLS) automatically. *Verified:* upload → approve → plays in sync with the channel clock. The live feed path needs MediaMTX on the VPS (not testable here).
+- **Join the team** (`/radio/join`): internship application with interest areas and an optional PDF résumé, reviewed under **Studio → Team applications**. *Verified* end to end.
+- The NCVR TV logo file still needs adding as `public/brand/ncvr-tv-logo.webp`. The page shows "NCVR TV" text until then.
+
 ## 🔑 Needs integration credentials or server setup
 | Feature | Needs |
 |---|---|
 | Live stream + Now Playing | `AZURACAST_BASE_URL`, `AZURACAST_STATION_ID` (+ `NEXT_PUBLIC_STREAM_URL` optional) |
 | Publish schedule, send tracks to AzuraCast, playlists, engine status, rotation report, force AutoDJ, skip | `AZURACAST_API_KEY` |
 | Console **Go live** | AzuraCast streamer accounts and `NEXT_PUBLIC_WEBCAST_URL` (`wss://…/webdj/ncvr/`), with "Use Web Proxy for Radio" enabled |
+| NCVR TV live camera feed | MediaMTX (`docker compose --profile tv`), port 1935, `MEDIAMTX_API_URL` |
 | Guest rooms | LiveKit server + `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET` |
 | Paid review / booking payments | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` |
 | Brand imagery | `public/brand/caprio-marble.jpg`, `public/brand/caprio-banner.jpg`, final logo (not in the repo yet) |

@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import type { Deck } from "@/lib/audio/engine";
 import { Knob, MeterBar, Waveform, fmtTime } from "./parts";
 import type { Meter } from "@/lib/audio/engine";
+import { usePresetSlot } from "./presets";
 
 export interface LibraryTrack { id: string; title: string; artistName: string; category: string }
 
@@ -12,6 +13,14 @@ export function DeckPanel({ deck, meter, library, label, sub, onLoaded }: { deck
   const [cue, setCue] = useState(false);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [trackId, setTrackId] = useState<string | null>(null);
+
+  usePresetSlot(deck?.id === "B" ? "deckB" : "deckA", { ...eq, cue, trackId }, async (v) => {
+    setEq({ trim: v.trim, filter: v.filter, low: v.low, mid: v.mid, high: v.high, fader: v.fader });
+    setCue(v.cue);
+    const t = v.trackId ? library.find((x) => x.id === v.trackId) : null;
+    if (t && !deck?.playing) await load(`/api/studio/library/${t.id}/audio`, t.title, t.artistName, t.id);
+  });
 
   useEffect(() => {
     if (!deck) return;
@@ -30,10 +39,10 @@ export function DeckPanel({ deck, meter, library, label, sub, onLoaded }: { deck
   const progress = el && el.duration ? el.currentTime / el.duration : 0;
   const disabled = !deck;
 
-  async function load(src: File | string, title: string, artist: string) {
+  async function load(src: File | string, title: string, artist: string, libraryId: string | null = null) {
     if (!deck) return;
     setLoading(true); setErr(null);
-    try { await deck.load(src, { title, artist }); onLoaded?.(title, artist); } catch (e) { setErr((e as Error).message); } finally { setLoading(false); force((n) => n + 1); }
+    try { await deck.load(src, { title, artist }); setTrackId(libraryId); onLoaded?.(title, artist); } catch (e) { setErr((e as Error).message); } finally { setLoading(false); force((n) => n + 1); }
   }
 
   return (
@@ -71,7 +80,7 @@ export function DeckPanel({ deck, meter, library, label, sub, onLoaded }: { deck
           <span className="label">Load from library (approved)</span>
           <select className="field text-sm" disabled={disabled || loading} defaultValue="" onChange={(e) => {
             const t = library.find((x) => x.id === e.target.value);
-            if (t) load(`/api/studio/library/${t.id}/audio`, t.title, t.artistName);
+            if (t) load(`/api/studio/library/${t.id}/audio`, t.title, t.artistName, t.id);
             e.target.value = "";
           }}>
             <option value="">{library.length ? "Choose a track…" : "No approved tracks yet"}</option>

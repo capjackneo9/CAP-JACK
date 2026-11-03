@@ -15,6 +15,8 @@ const NAV: Array<NavItem & { perm: Permission }> = [
   { href: "/studio/submissions", label: "Submissions", perm: "submissions.review" },
   { href: "/studio/bookings", label: "Bookings & sponsors", perm: "bookings.manage" },
   { href: "/studio/guests", label: "Guest rooms", perm: "guests.invite" },
+  { href: "/studio/videos", label: "NCVR TV", perm: "video.manage" },
+  { href: "/studio/team", label: "Team applications", perm: "interns.review" },
   { href: "/studio/settings", label: "Station settings", perm: "settings.rotation" },
   { href: "/studio/users", label: "Users", perm: "users.manage" },
   { href: "/studio/audit", label: "Audit log", perm: "audit.view" },

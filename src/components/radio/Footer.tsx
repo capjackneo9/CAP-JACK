@@ -15,6 +15,8 @@ export function Footer() {
           <li><Link className="hover:text-white" href="/radio/schedule">Schedule</Link></li>
           <li><Link className="hover:text-white" href="/radio/submit">Submit music</Link></li>
           <li><Link className="hover:text-white" href="/radio/advertise">Advertise & sponsor</Link></li>
+          <li><Link className="hover:text-white" href="/radio/tv">NCVR TV</Link></li>
+          <li><Link className="hover:text-white" href="/radio/join">Join the team — internships</Link></li>
           <li><Link className="hover:text-white" href="/radio/about">About & ownership</Link></li>
         </ul>
         <div className="text-xs text-[var(--color-muted)]">

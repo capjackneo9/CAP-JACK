@@ -23,7 +23,7 @@ export const authConfig = {
     },
     authorized({ auth, request }) {
       const path = request.nextUrl.pathname;
-      if (path.startsWith("/studio") || path.startsWith("/api/studio")) {
+      if (path.startsWith("/studio")) {
         return can(auth?.user?.role, "studio.access");
       }
       return true;

@@ -393,3 +393,83 @@ model AuditLog {
 
   @@index([createdAt])
 }
+
+/// Saved broadcast-console setups (sound bank, mixer, mic/FX, queue). Per user.
+model ConsolePreset {
+  id        String   @id @default(cuid())
+  userId    String
+  name      String
+  data      Json
+  isDefault Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+}
+
+/// Audio files a DJ loaded onto console pads from their own computer, kept so presets can reload them.
+model ConsolePadAsset {
+  id        String   @id @default(cuid())
+  userId    String
+  name      String
+  key       String   @unique
+  mime      String
+  size      Int
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+/// Music videos for the NCVR TV rotation.
+model MusicVideo {
+  id              String      @id @default(cuid())
+  stationId       String
+  title           String
+  artistName      String
+  filePath        String
+  fileMime        String
+  fileSize        Int
+  durationSec     Int
+  posterPath      String?
+  status          TrackStatus @default(PENDING_REVIEW)
+  rightsConfirmed Boolean     @default(false)
+  sortOrder       Int         @default(100)
+  createdById     String?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  @@index([status, sortOrder])
+}
+
+enum ApplicationStatus {
+  NEW
+  REVIEWING
+  INTERVIEW
+  ACCEPTED
+  DECLINED
+  WITHDRAWN
+}
+
+/// "Join the team" internship / volunteer applications.
+model InternApplication {
+  id           String            @id @default(cuid())
+  stationId    String
+  name         String
+  email        String
+  phone        String?
+  location     String?
+  areas        String[]
+  hoursPerWeek Int?
+  availability String
+  experience   String
+  motivation   String
+  portfolioUrl String?
+  resumePath   String?
+  resumeMime   String?
+  status       ApplicationStatus @default(NEW)
+  notes        String?
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+
+  @@index([status])
+}

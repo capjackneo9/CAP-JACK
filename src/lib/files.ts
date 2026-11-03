@@ -28,3 +28,22 @@ export function detectFileType(buf: Uint8Array): DetectedType | null {
 }
 
 export const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
+
+export type DetectedVideo = { kind: "video"; mime: "video/mp4" | "video/webm"; ext: string };
+export type DetectedPdf = { kind: "pdf"; mime: "application/pdf"; ext: "pdf" };
+
+/** MP4/MOV-family (ftyp box, non-audio brand) or WebM/Matroska (EBML header). */
+export function detectVideo(b: Uint8Array): DetectedVideo | null {
+  if (b.length < 12) return null;
+  const ascii = (o: number, n: number) => String.fromCharCode(...b.slice(o, o + n));
+  if (ascii(4, 4) === "ftyp" && !["M4A ", "M4B ", "M4P "].includes(ascii(8, 4))) return { kind: "video", mime: "video/mp4", ext: "mp4" };
+  if (b[0] === 0x1a && b[1] === 0x45 && b[2] === 0xdf && b[3] === 0xa3) return { kind: "video", mime: "video/webm", ext: "webm" };
+  return null;
+}
+
+export function detectPdf(b: Uint8Array): DetectedPdf | null {
+  return b.length >= 5 && String.fromCharCode(...b.slice(0, 5)) === "%PDF-" ? { kind: "pdf", mime: "application/pdf", ext: "pdf" } : null;
+}
+
+export const MAX_PDF_BYTES = 10 * 1024 * 1024;
+export const MAX_PAD_BYTES = 15 * 1024 * 1024;

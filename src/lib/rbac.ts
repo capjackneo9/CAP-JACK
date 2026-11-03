@@ -32,18 +32,20 @@ export type Permission =
   | "streaming.configure"     // stream / AzuraCast configuration
   | "users.manage"
   | "audit.view"
-  | "settings.rotation";
+  | "settings.rotation"
+  | "video.manage"            // NCVR TV: upload/approve music videos, live video settings
+  | "interns.review";         // review "Join the team" applications
 
 const MATRIX: Record<Role, Permission[]> = {
   OWNER: [
     "studio.access", "console.broadcast", "broadcast.returnToAutoDJ", "schedule.view", "schedule.edit", "schedule.publish",
     "library.view", "library.upload", "library.approve", "submissions.review", "submissions.approve", "bookings.manage",
-    "guests.invite", "streaming.configure", "users.manage", "audit.view", "settings.rotation",
+    "guests.invite", "streaming.configure", "users.manage", "audit.view", "settings.rotation", "video.manage", "interns.review",
   ],
   STATION_MANAGER: [
     "studio.access", "console.broadcast", "broadcast.returnToAutoDJ", "schedule.view", "schedule.edit", "schedule.publish",
     "library.view", "library.upload", "library.approve", "submissions.review", "submissions.approve", "bookings.manage",
-    "guests.invite", "streaming.configure", "audit.view", "settings.rotation",
+    "guests.invite", "streaming.configure", "audit.view", "settings.rotation", "video.manage", "interns.review",
   ],
   DJ_HOST: ["studio.access", "console.broadcast", "schedule.view", "library.view", "guests.invite"],
   MUSIC_REVIEWER: ["studio.access", "schedule.view", "library.view", "submissions.review"],

@@ -8,6 +8,8 @@ import { DeckPanel, type LibraryTrack } from "./DeckPanel";
 import { ConfirmAction, Knob, MeterBar, fmtTime } from "./parts";
 import { GuestPanel } from "./GuestPanel";
 import { Emblem } from "../../brand/Logo";
+import { PresetBar, PresetRegistryProvider, usePresetSlot } from "./presets";
+import { padUrl, type PadSource } from "@/lib/console/preset";
 
 type Meters = ReturnType<MixEngine["meters"]>;
 
@@ -25,13 +27,15 @@ export function Console(props: ConsoleProps) {
   const [meters, setMeters] = useState<Meters | null>(null);
   const [library, setLibrary] = useState<LibraryTrack[]>([]);
   const [libErr, setLibErr] = useState<string | null>(null);
+  const [libReady, setLibReady] = useState(false);
 
   // Load approved library tracks for decks / pads / queue
   useEffect(() => {
     fetch("/api/studio/library?status=APPROVED").then(async (r) => {
       const j = await r.json();
       if (!r.ok) setLibErr(j.error); else setLibrary(j.tracks);
-    }).catch((e) => setLibErr(e.message));
+      setLibReady(true);
+    }).catch((e) => { setLibErr(e.message); setLibReady(true); });
   }, []);
 
   // Meter loop
@@ -72,7 +76,9 @@ export function Console(props: ConsoleProps) {
   }
 
   return (
+    <PresetRegistryProvider>
     <div className="space-y-4">
+      <PresetBar ready={libReady} />
       <TransmitPanel engine={engine} {...props} />
       {libErr && <p className="text-sm text-red-300">Library: {libErr}</p>}
       <div className="grid gap-4 xl:grid-cols-[1fr_auto_1fr]">
@@ -90,6 +96,7 @@ export function Console(props: ConsoleProps) {
       </div>
       {props.canInviteGuests && <GuestPanel engine={engine} meters={meters?.guests ?? {}} livekitConfigured={props.livekitConfigured} />}
     </div>
+    </PresetRegistryProvider>
   );
 }
 
@@ -99,6 +106,7 @@ function MasterSection({ engine, meters }: { engine: MixEngine; meters: Meters |
   const [monitor, setMonitor] = useState(0.7);
   const [outputs, setOutputs] = useState<MediaDeviceInfo[]>([]);
   const [cueMsg, setCueMsg] = useState<string | null>(null);
+  usePresetSlot("master", { crossfade: xf, master, monitor }, (v) => { setXf(v.crossfade); setMaster(v.master); setMonitor(v.monitor); });
   useEffect(() => { engine.setCrossfade(xf); }, [engine, xf]);
   useEffect(() => { engine.master.gain.value = master; }, [engine, master]);
   useEffect(() => { engine.monitorBus.gain.value = monitor; }, [engine, monitor]);
@@ -150,6 +158,10 @@ function MicChannel({ engine, meter }: { engine: MixEngine; meter?: Meter }) {
   const [reverb, setReverb] = useState(0);
   const [monitor, setMonitor] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+
+  usePresetSlot("mic", { gain, ducking, duckLevel, echo, reverb, monitor }, (v) => {
+    setGain(v.gain); setDucking(v.ducking); setDuckLevel(v.duckLevel); setEcho(v.echo); setReverb(v.reverb); setMonitor(v.monitor);
+  });
 
   const refreshDevices = useCallback(() => navigator.mediaDevices.enumerateDevices().then((d) => setDevices(d.filter((x) => x.kind === "audioinput"))), []);
   useEffect(() => { refreshDevices().catch(() => null); }, [refreshDevices]);
@@ -216,6 +228,8 @@ const PAD_KEYS = ["1", "2", "3", "4", "5", "6", "7", "8"];
 
 function PadBank({ engine, library }: { engine: MixEngine; library: LibraryTrack[] }) {
   const [names, setNames] = useState<Record<number, string>>({});
+  const [sources, setSources] = useState<Record<number, PadSource>>({});
+  const [saving, setSaving] = useState<number | null>(null);
   const [flash, setFlash] = useState<number | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const jingles = library.filter((t) => ["STATION_IDS", "SOUND_EFFECTS", "COMMERCIALS"].includes(t.category));
@@ -235,10 +249,31 @@ function PadBank({ engine, library }: { engine: MixEngine; library: LibraryTrack
     return () => window.removeEventListener("keydown", onKey);
   }, [fire]);
 
-  async function load(i: number, src: File | string, name: string) {
+  async function load(i: number, src: File | string, name: string, source?: PadSource) {
     setErr(null);
-    try { await engine.loadPad(i, src, name); setNames((n) => ({ ...n, [i]: name })); } catch (e) { setErr(`Pad ${i + 1}: ${(e as Error).message}`); }
+    try {
+      await engine.loadPad(i, src, name);
+      setNames((n) => ({ ...n, [i]: name }));
+      if (source) setSources((s) => ({ ...s, [i]: source }));
+    } catch (e) { setErr(`Pad ${i + 1}: ${(e as Error).message}`); }
   }
+
+  /** Local files are stored on the server so this pad can be restored by a preset. */
+  async function loadLocal(i: number, f: File) {
+    const name = f.name.replace(/\.[^.]+$/, "");
+    await load(i, f, name);
+    setSaving(i);
+    const fd = new FormData(); fd.append("file", f); fd.append("name", name);
+    const r = await fetch("/api/studio/console/pads", { method: "POST", body: fd });
+    const j = await r.json().catch(() => ({}));
+    setSaving(null);
+    if (r.ok) setSources((s) => ({ ...s, [i]: { source: "pad", id: j.pad.id, name } }));
+    else setErr(`Pad ${i + 1} plays now but won't be saved in presets: ${j.error ?? "upload failed"}`);
+  }
+
+  usePresetSlot("pads", PAD_KEYS.map((_, i) => sources[i] ?? null), async (list) => {
+    await Promise.all(list.map((p, i) => (p ? load(i, padUrl(p), p.name, p) : Promise.resolve())));
+  });
 
   return (
     <section className="glass p-4" aria-label="Sound pads">
@@ -256,14 +291,14 @@ function PadBank({ engine, library }: { engine: MixEngine; library: LibraryTrack
             </button>
             <select aria-label={`Load pad ${k}`} className="field px-1 py-1 text-[10px]" defaultValue="" onChange={(e) => {
               const t = jingles.find((x) => x.id === e.target.value);
-              if (t) load(i, `/api/studio/library/${t.id}/audio`, t.title);
+              if (t) load(i, `/api/studio/library/${t.id}/audio`, t.title, { source: "library", id: t.id, name: t.title });
               e.target.value = "";
             }}>
               <option value="">Library…</option>
               {jingles.map((t) => <option key={t.id} value={t.id}>{t.title}</option>)}
             </select>
             <label className="cursor-pointer text-center text-[10px] text-[var(--color-muted)] hover:text-white">
-              File…<input type="file" accept="audio/*" className="sr-only" onChange={(e) => { const f = e.target.files?.[0]; if (f) load(i, f, f.name.replace(/\.[^.]+$/, "")); }} />
+              {saving === i ? "Saving…" : "File…"}<input type="file" accept="audio/*" className="sr-only" onChange={(e) => { const f = e.target.files?.[0]; if (f) loadLocal(i, f); }} />
             </label>
           </div>
         ))}
@@ -275,6 +310,9 @@ function PadBank({ engine, library }: { engine: MixEngine; library: LibraryTrack
 
 function QueuePanel({ engine, library }: { engine: MixEngine; library: LibraryTrack[] }) {
   const [queue, setQueue] = useState<LibraryTrack[]>([]);
+  usePresetSlot("queue", queue.map((t) => t.id), (ids) => {
+    setQueue(ids.map((id) => library.find((t) => t.id === id)).filter((t): t is LibraryTrack => Boolean(t)));
+  });
   const [msg, setMsg] = useState<string | null>(null);
   async function loadNext() {
     const next = queue[0];
@@ -364,6 +402,11 @@ function TransmitPanel({ engine, webcastUrl, webDjUrl, canReturnToAutoDJ }: { en
   const [bitrate, setBitrate] = useState(128000);
   const [msg, setMsg] = useState<string | null>(null);
   const caster = useRef<Webcaster | null>(null);
+  usePresetSlot("transmit", { url, user, bitrate }, (v) => {
+    if (v.url) setUrl(v.url);
+    if (v.user) setUser(v.user);
+    if (v.bitrate) setBitrate(v.bitrate);
+  });
   if (!caster.current) caster.current = new Webcaster((s, e) => { setTransport(s); setTErr(e); });
 
   useEffect(() => () => caster.current?.disconnect(), []);

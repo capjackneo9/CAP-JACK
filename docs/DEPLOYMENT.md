@@ -92,6 +92,22 @@ NCVR lives on its own domain, so the main Caprio Jackson site needs no changes. 
 - **Guest rooms (LiveKit):** generate keys with `docker run --rm livekit/livekit-server generate-keys`, put them in `deploy/livekit.yaml` and `.env` (`LIVEKIT_URL=wss://livekit.nitecapviberadio.tech`), uncomment the `livekit` block in the Caddyfile, open **TCP 7881** and **UDP 50000–50200** in the Hostinger firewall, then run `docker compose --profile guests up -d`.
 - **Payments (Stripe):** set `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET`. Add a webhook endpoint `https://nitecapviberadio.tech/api/stripe/webhook` for `checkout.session.completed` and `checkout.session.expired`.
 
+## 5b. NCVR TV live video (optional)
+The music-video rotation works with no extra setup — upload videos in **Studio → NCVR TV**. Live camera video needs MediaMTX:
+```bash
+cd /opt/ncvr && cp deploy/mediamtx.yml.example deploy/mediamtx.yml
+LIVEPASS=$(openssl rand -hex 12) && sed -i "s/CHANGE_ME_LIVE_PASSWORD/$LIVEPASS/" deploy/mediamtx.yml && echo "Your OBS live password: $LIVEPASS"
+grep -q '^MEDIAMTX_API_URL=' .env && sed -i 's|^MEDIAMTX_API_URL=.*|MEDIAMTX_API_URL=http://mediamtx:9997|' .env || echo 'MEDIAMTX_API_URL=http://mediamtx:9997' >> .env
+grep -q '^LIVE_RTMP_URL=' .env || echo 'LIVE_RTMP_URL=rtmp://stream.nitecapviberadio.tech:1935' >> .env
+docker compose --profile tv up -d && docker compose up -d --force-recreate app
+```
+Then update Caddy with the `handle_path /live-hls/*` block from `deploy/Caddyfile` and `systemctl reload caddy`.
+Keep TCP **1935** open in the Hostinger firewall.
+
+**OBS:** Settings → Stream → Service *Custom* · Server `rtmp://stream.nitecapviberadio.tech:1935` · Stream key `live?user=ncvr&pass=YOUR-LIVE-PASSWORD`.
+Recommended output: 1280×720 or 1920×1080, 30 fps, x264, 2500–4500 kbps, keyframe interval 2 s, AAC 160 kbps.
+NCVR TV switches to the live feed within ~20 s and back to the rotation when you stop.
+
 ## 6. Go-live checklist
 - [ ] Stream plays from the public player; Now Playing shows real track data
 - [ ] `npm run schedule:check` passes (168/168 h); link programs to playlists in the studio scheduler, then **Publish to AzuraCast** and confirm each shows SYNCED

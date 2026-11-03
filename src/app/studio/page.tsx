@@ -18,7 +18,8 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
       submissions: await db.submission.count({ where: { status: { in: ["SUBMITTED", "UNDER_REVIEW"] } } }),
       tracks: await db.track.count({ where: { status: "PENDING_REVIEW" } }),
       bookings: await db.booking.count({ where: { status: { in: ["REQUESTED", "UNDER_REVIEW"] } } }),
-    }), { submissions: 0, tracks: 0, bookings: 0 }),
+      applications: await db.internApplication.count({ where: { status: "NEW" } }),
+    }), { submissions: 0, tracks: 0, bookings: 0, applications: 0 }),
   ]);
   const report = analyzeSchedule(programs, programs.flatMap((p) => p.slots.map((s) => ({ ...s, programId: p.id }))));
   const rows: Array<[string, boolean, string]> = [
@@ -29,6 +30,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
     ["Studio webcast transmitter", status.webcast, "NEXT_PUBLIC_WEBCAST_URL"],
     ["Guest rooms (LiveKit)", status.livekit, "LIVEKIT_URL / API key / secret"],
     ["Payments (Stripe)", status.stripe, "STRIPE_SECRET_KEY + STRIPE_WEBHOOK_SECRET"],
+    ["NCVR TV live video (MediaMTX)", status.liveVideo, "MEDIAMTX_API_URL"],
   ];
   return (
     <div className="space-y-4">
@@ -40,6 +42,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
             <li className="flex justify-between"><Link className="hover:underline" href="/studio/submissions">Submissions awaiting review</Link><Badge tone="gold">{counts.data.submissions}</Badge></li>
             <li className="flex justify-between"><Link className="hover:underline" href="/studio/library">Tracks pending approval</Link><Badge tone="gold">{counts.data.tracks}</Badge></li>
             <li className="flex justify-between"><Link className="hover:underline" href="/studio/bookings">Booking requests</Link><Badge tone="gold">{counts.data.bookings}</Badge></li>
+            <li className="flex justify-between"><Link className="hover:underline" href="/studio/team">New team applications</Link><Badge tone="gold">{counts.data.applications}</Badge></li>
           </ul>
         </Panel>
       </div>

@@ -9,6 +9,8 @@ export const BRAND = {
   icon: "/brand/ncvr-emblem-192.png",
   /** Wide "NCVR · Nite Cap Vibe Radio" text logo (1200×365). */
   wordmark: "/brand/ncvr-wordmark.webp",
+  /** "NCVR TV" logo (crown + TV set). Falls back to the emblem until the file exists. */
+  tvLogo: "/brand/ncvr-tv-logo.webp",
   marblePortrait: "/brand/caprio-marble.jpg",
   editorialBanner: "/brand/caprio-banner.jpg",
   mainSite: "https://capriojacksoncoded.si",

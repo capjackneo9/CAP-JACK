@@ -1,0 +1,42 @@
+# MediaMTX config for NCVR TV live video.
+# Copy to deploy/mediamtx.yml and replace CHANGE_ME_LIVE_PASSWORD (see docs/DEPLOYMENT.md → NCVR TV).
+logLevel: info
+
+api: yes
+apiAddress: :9997
+
+rtmp: yes
+rtmpAddress: :1935
+hls: yes
+hlsAddress: :8888
+hlsVariant: mpegts
+hlsAllowOrigin: '*'
+rtsp: no
+webrtc: no
+srt: no
+
+authMethod: internal
+authInternalUsers:
+  # Anyone may watch.
+  - user: any
+    pass:
+    ips: []
+    permissions:
+      - action: read
+        path:
+  # Only the station can broadcast (OBS stream key: live?user=ncvr&pass=...).
+  - user: ncvr
+    pass: CHANGE_ME_LIVE_PASSWORD
+    ips: []
+    permissions:
+      - action: publish
+        path: live
+  # The NCVR app checks live status over the private Docker network.
+  - user: any
+    pass:
+    ips: ['127.0.0.1', '::1', '10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16']
+    permissions:
+      - action: api
+
+paths:
+  live:
