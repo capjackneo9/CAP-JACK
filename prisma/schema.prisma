@@ -116,6 +116,12 @@ model Station {
   tvCommercialsEnabled Boolean  @default(true)
   tvBreakEvery         Int      @default(3)
   tvBreakSeconds       Int      @default(90)
+  // NCVR TV look
+  tvBugPath            String?
+  tvBugPosition        String   @default("top-right")
+  tvBugSize            String   @default("md")
+  tvBugOpacity         Int      @default(85)
+  tvLayout             String   @default("logo-top")
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
 
@@ -428,6 +434,7 @@ enum TvKind {
   MUSIC_VIDEO
   CARTOON
   PROGRAM
+  MOVIE
   COMMERCIAL
 }
 
@@ -462,16 +469,28 @@ model MusicVideo {
 
 /// NCVR TV schedule block, e.g. "Saturday Morning Cartoons" Sat 8 AM–12 PM ET.
 model TvBlock {
-  id          String   @id @default(cuid())
-  title       String
-  days        Int[]
-  startMinute Int
-  endMinute   Int
-  kind        TvKind
-  commercials Boolean  @default(true)
-  active      Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id                 String   @id @default(cuid())
+  title              String
+  days               Int[]
+  startMinute        Int
+  endMinute          Int
+  kind               TvKind
+  commercials        Boolean  @default(true)
+  active             Boolean  @default(true)
+  /// Per-block break timing (null = use the channel settings)
+  breakEvery         Int?
+  breakSeconds       Int?
+  /// On-screen logo for this block (null = channel logo)
+  logoPath           String?
+  logoPosition       String?
+  logoSize           String?
+  /// Optional feature presentation inside the block (e.g. a 1-hour movie)
+  featureVideoId     String?
+  featureStartMinute Int?
+  /// Only on this date (station-local, YYYY-MM-DD). Null = every week.
+  featureDate        String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 }
 
 enum ApplicationStatus {

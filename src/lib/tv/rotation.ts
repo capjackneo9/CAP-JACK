@@ -148,3 +148,35 @@ export function blocksOverlap(a: Omit<TvBlockInput, "active">, b: Omit<TvBlockIn
 export function activeBlock<T extends TvBlockInput>(blocks: T[], isoDay: number, minute: number): T | null {
   return blocks.find((b) => b.active && b.days.includes(isoDay) && b.startMinute <= minute && minute < b.endMinute) ?? null;
 }
+
+// ─────────────────────────────────────────────────────────────
+// Feature presentation (e.g. a 1-hour movie inside a block) & screen look
+// ─────────────────────────────────────────────────────────────
+
+/** Seconds into the feature if it is playing at `now`, else null. */
+export function featureOffset(featureStart: number, durationSec: number, now: number): number | null {
+  const off = (now - featureStart) / 1000;
+  return off >= 0 && off < durationSec ? off : null;
+}
+
+export const LOGO_POSITIONS = ["top-left", "top-right", "bottom-left", "bottom-right"] as const;
+export const LOGO_SIZES = ["sm", "md", "lg"] as const;
+export type LogoPosition = (typeof LOGO_POSITIONS)[number];
+export type LogoSize = (typeof LOGO_SIZES)[number];
+
+export interface ScreenLook { bugSrc: string; position: LogoPosition; size: LogoSize; opacity: number }
+
+export function resolveLook(
+  station: { tvBugPath?: string | null; tvBugPosition?: string | null; tvBugSize?: string | null; tvBugOpacity?: number | null } | null,
+  block: { logoPath?: string | null; logoPosition?: string | null; logoSize?: string | null } | null,
+  defaultBug = "/brand/ncvr-tv-logo.webp",
+): ScreenLook {
+  const pos = (block?.logoPath ? block.logoPosition : null) ?? station?.tvBugPosition ?? "top-right";
+  const size = (block?.logoPath ? block.logoSize : null) ?? station?.tvBugSize ?? "md";
+  return {
+    bugSrc: block?.logoPath || station?.tvBugPath || defaultBug,
+    position: (LOGO_POSITIONS as readonly string[]).includes(pos) ? (pos as LogoPosition) : "top-right",
+    size: (LOGO_SIZES as readonly string[]).includes(size) ? (size as LogoSize) : "md",
+    opacity: Math.min(100, Math.max(20, station?.tvBugOpacity ?? 85)),
+  };
+}

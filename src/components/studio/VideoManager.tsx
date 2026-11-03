@@ -4,17 +4,20 @@ import { Badge } from "../ui/Panel";
 import { fmtTime } from "./console/parts";
 import { DAY_SHORT, formatMinute } from "@/lib/schedule";
 
-type Kind = "MUSIC_VIDEO" | "CARTOON" | "PROGRAM" | "COMMERCIAL";
+import { BlockEditor, ScreenLookPanel, type BlockFull, type LookSettings } from "./TvLook";
+
+type Kind = "MUSIC_VIDEO" | "CARTOON" | "PROGRAM" | "MOVIE" | "COMMERCIAL";
 const KINDS: Array<[Kind, string, string]> = [
   ["MUSIC_VIDEO", "Music videos", "Artist"],
   ["CARTOON", "Cartoons", "Series / creator"],
   ["PROGRAM", "Shows", "Series / host"],
+  ["MOVIE", "Movies", "Studio / director"],
   ["COMMERCIAL", "Commercials", "Advertiser"],
 ];
 interface V { id: string; kind: Kind; title: string; artistName: string; advertiser: string | null; durationSec: number; status: string; sortOrder: number; fileSize: number; startsOn: string | null; endsOn: string | null; weight: number }
 interface Live { configured: boolean; live: boolean; hlsUrl: string | null; error?: string }
-interface Settings { enabled: boolean; breakEvery: number; breakSeconds: number }
-interface Block { id: string; title: string; days: number[]; startMinute: number; endMinute: number; kind: Kind; commercials: boolean; active: boolean }
+interface Settings extends LookSettings { enabled: boolean; breakEvery: number; breakSeconds: number }
+type Block = BlockFull & { kind: Kind };
 
 const TIMES = Array.from({ length: 49 }, (_, i) => i * 30);
 const json = (method: string, body: unknown) => ({ method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
@@ -89,7 +92,7 @@ export function VideoManager() {
 
   async function saveSettings() {
     if (!settings) return;
-    const r = await fetch("/api/studio/tv/settings", json("PUT", settings));
+    const r = await fetch("/api/studio/tv/settings", json("PUT", { enabled: settings.enabled, breakEvery: settings.breakEvery, breakSeconds: settings.breakSeconds }));
     const j = await r.json();
     setMsg(r.ok ? { tone: "ok", text: "Commercial break settings saved — NCVR TV uses them immediately." } : { tone: "err", text: j.error });
   }
@@ -154,8 +157,10 @@ export function VideoManager() {
         {tooLong.length > 0 && <p className="mt-1 text-xs text-[var(--color-gold)]">Longer than a break and never shown: {tooLong.map((s) => s.title).join(", ")}. Lengthen breaks or trim the spot.</p>}
       </section>
 
+      {settings && <ScreenLookPanel initial={settings} onMsg={setMsg} />}
+
       {/* TV schedule */}
-      <BlocksPanel blocks={blocks} onChange={load} setMsg={setMsg} />
+      <BlocksPanel blocks={blocks} videos={videos} channel={{ breakEvery: settings?.breakEvery ?? 3, breakSeconds: settings?.breakSeconds ?? 90 }} onChange={load} setMsg={setMsg} />
 
       {/* Upload */}
       <form onSubmit={upload} className="glass grid gap-3 p-4 md:grid-cols-4">
@@ -227,9 +232,10 @@ export function VideoManager() {
   );
 }
 
-function BlocksPanel({ blocks, onChange, setMsg }: { blocks: Block[]; onChange: () => void; setMsg: (m: { tone: "ok" | "err"; text: string }) => void }) {
-  const [draft, setDraft] = useState<Omit<Block, "id">>({ title: "", days: [6], startMinute: 480, endMinute: 720, kind: "CARTOON", commercials: true, active: true });
-  async function save(id: string | null, body: Partial<Block>) {
+function BlocksPanel({ blocks, videos, channel, onChange, setMsg }: { blocks: Block[]; videos: V[]; channel: { breakEvery: number; breakSeconds: number }; onChange: () => void; setMsg: (m: { tone: "ok" | "err"; text: string }) => void }) {
+  const [draft, setDraft] = useState<{ title: string; days: number[]; startMinute: number; endMinute: number; kind: Kind; commercials: boolean; active: boolean }>({ title: "", days: [7], startMinute: 540, endMinute: 660, kind: "CARTOON", commercials: true, active: true });
+  const [editing, setEditing] = useState<string | null>(null);
+  async function save(id: string | null, body: Partial<Block> | typeof draft) {
     const r = await fetch(id ? `/api/studio/tv/blocks/${id}` : "/api/studio/tv/blocks", json(id ? "PATCH" : "POST", body));
     const j = await r.json();
     if (!r.ok) return setMsg({ tone: "err", text: j.error });
@@ -248,13 +254,20 @@ function BlocksPanel({ blocks, onChange, setMsg }: { blocks: Block[]; onChange: 
       <p className="mt-1 text-xs text-[var(--color-muted)]">Outside these blocks NCVR TV plays the music-video rotation. If a block has nothing on air yet, music videos play instead.</p>
       <ul className="mt-3 space-y-2">
         {blocks.map((b) => (
-          <li key={b.id} className={`flex flex-wrap items-center gap-3 rounded-xl border p-3 text-sm ${b.active ? "border-[var(--color-gold)]/40" : "border-white/10 opacity-60"}`}>
+          <li key={b.id} className={`rounded-xl border p-3 text-sm ${b.active ? "border-[var(--color-gold)]/40" : "border-white/10 opacity-60"}`}>
+            <div className="flex flex-wrap items-center gap-3">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            {b.logoPath && <img src={b.logoPath} alt="" className="h-10 w-auto" />}
             <strong className="min-w-48">{b.title}</strong>
             <span className="font-mono text-xs">{b.days.map((d) => DAY_SHORT[d]).join(", ")} · {formatMinute(b.startMinute)}–{b.endMinute === 1440 ? "12 AM" : formatMinute(b.endMinute)}</span>
             <Badge tone="royal">{kindLabel(b.kind)}</Badge>
             <label className="flex items-center gap-1 text-xs"><input type="checkbox" checked={b.commercials} onChange={(e) => save(b.id, { commercials: e.target.checked })} className="accent-[var(--color-gold)]" />Commercials</label>
             <label className="flex items-center gap-1 text-xs"><input type="checkbox" checked={b.active} onChange={(e) => save(b.id, { active: e.target.checked })} className="accent-[var(--color-gold)]" />Active</label>
-            <button type="button" className="ml-auto text-xs text-red-300 hover:underline" onClick={() => remove(b)}>Delete</button>
+            {b.featureVideoId && <Badge tone="gold">Feature {b.featureStartMinute != null ? formatMinute(b.featureStartMinute) : ""}{b.featureDate ? ` · ${b.featureDate}` : " · weekly"}</Badge>}
+            <button type="button" className="btn btn-ghost ml-auto px-3 py-1 text-xs" aria-expanded={editing === b.id} onClick={() => setEditing(editing === b.id ? null : b.id)}>{editing === b.id ? "Close" : "Edit"}</button>
+            <button type="button" className="text-xs text-red-300 hover:underline" onClick={() => remove(b)}>Delete</button>
+            </div>
+            {editing === b.id && <BlockEditor block={b} videos={videos} channel={channel} onSaved={onChange} onMsg={setMsg} />}
           </li>
         ))}
       </ul>

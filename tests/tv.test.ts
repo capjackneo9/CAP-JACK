@@ -57,3 +57,29 @@ describe("TV schedule blocks", () => {
     expect(activeBlock([{ ...sat, active: false }], 6, 9 * 60)).toBeNull();
   });
 });
+
+describe("feature presentation & screen look", async () => {
+  const { featureOffset, resolveLook } = await import("@/lib/tv/rotation");
+  it("plays the feature only inside its window", () => {
+    expect(featureOffset(1000, 3600, 1000 + 60_000)).toBe(60);
+    expect(featureOffset(1000, 3600, 999)).toBeNull();
+    expect(featureOffset(1000, 3600, 1000 + 3600_000)).toBeNull();
+  });
+  it("uses the block logo during a block, else the channel logo", () => {
+    const st = { tvBugPath: null, tvBugPosition: "top-right", tvBugSize: "md", tvBugOpacity: 85 };
+    expect(resolveLook(st, null)).toMatchObject({ bugSrc: "/brand/ncvr-tv-logo.webp", position: "top-right" });
+    expect(resolveLook(st, { logoPath: "/brand/saturday-vibe-amerime.webp", logoPosition: "top-left", logoSize: "lg" }))
+      .toMatchObject({ bugSrc: "/brand/saturday-vibe-amerime.webp", position: "top-left", size: "lg" });
+    expect(resolveLook({ ...st, tvBugPosition: "middle" }, null).position).toBe("top-right"); // invalid → safe default
+  });
+  it("Amerime formats fit exactly in 2 hours", async () => {
+    const { channelNow, TV_EPOCH } = await import("@/lib/tv/rotation");
+    const eps15 = Array.from({ length: 15 }, (_, i) => ({ id: `e${i}`, durationSec: 420 }));
+    const spot = [{ id: "ad", durationSec: 60, weight: 1 }];
+    // 15 × 7 min + 15 × 1 min breaks = 120 min → loops back to episode 1 at exactly 2 h
+    expect(channelNow(eps15, spot, { enabled: true, breakEvery: 1, breakSeconds: 60 }, TV_EPOCH + 120 * 60_000)).toMatchObject({ type: "video", videoId: "e0", offsetSec: 0 });
+    const eps16 = Array.from({ length: 16 }, (_, i) => ({ id: `e${i}`, durationSec: 420 }));
+    // 16 × 7 min + 8 × 1 min breaks (every 2 shows) = 120 min
+    expect(channelNow(eps16, spot, { enabled: true, breakEvery: 2, breakSeconds: 60 }, TV_EPOCH + 120 * 60_000)).toMatchObject({ type: "video", videoId: "e0", offsetSec: 0 });
+  });
+});

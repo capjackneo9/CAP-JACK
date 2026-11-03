@@ -8,7 +8,7 @@ const body = z.object({
   title: z.string().trim().min(1).max(200).optional(),
   artistName: z.string().trim().min(1).max(200).optional(),
   sortOrder: z.number().int().min(0).max(100000).optional(),
-  kind: z.enum(["MUSIC_VIDEO", "CARTOON", "PROGRAM", "COMMERCIAL"]).optional(),
+  kind: z.enum(["MUSIC_VIDEO", "CARTOON", "PROGRAM", "MOVIE", "COMMERCIAL"]).optional(),
   advertiser: z.string().trim().max(200).nullable().optional(),
   startsOn: z.coerce.date().nullable().optional(),
   endsOn: z.coerce.date().nullable().optional(),

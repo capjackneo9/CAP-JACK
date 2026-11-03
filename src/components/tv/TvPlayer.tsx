@@ -3,14 +3,18 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { usePlayer } from "../player/PlayerProvider";
 
 type Item =
-  | { type: "video"; id: string; title: string; artist: string; src: string; durationSec: number }
+  | { type: "video"; id: string; title: string; artist: string; src: string; durationSec: number; feature?: boolean }
   | { type: "commercial"; id: string; title: string; advertiser: string; src: string; durationSec: number }
   | { type: "card" };
 type Block = { title: string; kind: string; label: string } | null;
+type Look = { bugSrc: string; position: "top-left" | "top-right" | "bottom-left" | "bottom-right"; size: "sm" | "md" | "lg"; opacity: number };
 type Now =
-  | { mode: "live"; hlsUrl: string; serverTime: number }
-  | { mode: "rotation"; serverTime: number; item: Item; offsetSec: number; remainingSec: number; breakRemainingSec?: number; next: Array<{ title: string; artist: string }>; block: Block }
-  | { mode: "off"; reason: string; block?: Block };
+  | { mode: "live"; hlsUrl: string; serverTime: number; look?: Look }
+  | { mode: "rotation"; serverTime: number; item: Item; offsetSec: number; remainingSec: number; breakRemainingSec?: number; next: Array<{ title: string; artist: string }>; block: Block; look?: Look }
+  | { mode: "off"; reason: string; block?: Block; look?: Look };
+
+const BUG_POS = { "top-left": "left-3 top-3", "top-right": "right-3 top-3", "bottom-left": "bottom-14 left-3", "bottom-right": "bottom-14 right-3" } as const;
+const BUG_SIZE = { sm: "w-14 sm:w-24", md: "w-20 sm:w-36", lg: "w-28 sm:w-52" } as const;
 
 /**
  * NCVR TV — synchronized channel: music videos / scheduled blocks, commercial
@@ -29,7 +33,36 @@ export function TvPlayer({ bugSrc = "/brand/ncvr-emblem.webp" }: { bugSrc?: stri
   const [showCaption, setShowCaption] = useState(true);
   const [retro, setRetro] = useState(true);
   const [countdown, setCountdown] = useState(0);
+  const [isFs, setIsFs] = useState(false);
+  const [touch, setTouch] = useState(false);
   const radio = usePlayer();
+
+  useEffect(() => {
+    setTouch(window.matchMedia("(pointer: coarse)").matches);
+    const onFs = () => setIsFs(Boolean(document.fullscreenElement));
+    document.addEventListener("fullscreenchange", onFs);
+    return () => document.removeEventListener("fullscreenchange", onFs);
+  }, []);
+
+  /** Full screen: the whole TV frame (keeps logo/captions); iPhone falls back to native video full screen. */
+  async function enterFullscreen() {
+    const el = video.current;
+    const w = wrap.current as (HTMLDivElement & { webkitRequestFullscreen?: () => void }) | null;
+    try {
+      if (w?.requestFullscreen) await w.requestFullscreen();
+      else if (w?.webkitRequestFullscreen) w.webkitRequestFullscreen();
+      else (el as HTMLVideoElement & { webkitEnterFullscreen?: () => void })?.webkitEnterFullscreen?.();
+      const o = screen.orientation as ScreenOrientation & { lock?: (o: string) => Promise<void> };
+      await o?.lock?.("landscape").catch(() => null);
+    } catch { (el as HTMLVideoElement & { webkitEnterFullscreen?: () => void })?.webkitEnterFullscreen?.(); }
+  }
+  function exitFullscreen() { if (document.fullscreenElement) document.exitFullscreen().catch(() => null); }
+
+  /** Tap on the picture: unmute + full screen on phones/tablets. */
+  function onScreenTap() {
+    if (muted) toggleSound();
+    if (touch && !isFs) enterFullscreen();
+  }
 
   const load = useCallback(async () => {
     try {
@@ -92,7 +125,7 @@ export function TvPlayer({ bugSrc = "/brand/ncvr-emblem.webp" }: { bugSrc?: stri
       } else {
         import("hls.js").then(({ default: Hls }) => {
           if (!Hls.isSupported()) { setErr("This browser cannot play the live feed."); return; }
-          const h = new Hls({ liveSyncDurationCount: 3 });
+          const h = new Hls({ lowLatencyMode: true, liveSyncDurationCount: 2, liveMaxLatencyDurationCount: 5, backBufferLength: 30 });
           h.loadSource(now.hlsUrl);
           h.attachMedia(el);
           h.on(Hls.Events.ERROR, (_e, data) => { if (data.fatal) { setErr("Live feed interrupted — reconnecting…"); setTimeout(load, 4000); } });
@@ -137,53 +170,62 @@ export function TvPlayer({ bugSrc = "/brand/ncvr-emblem.webp" }: { bugSrc?: stri
 
   const item = now?.mode === "rotation" ? now.item : null;
   const block = now && "block" in now ? now.block : null;
+  const look: Look = now?.look ?? { bugSrc, position: "top-right", size: bugSrc.includes("tv-logo") ? "md" : "sm", opacity: 85 };
+  const badgeSide = look.position === "top-left" ? "right-3" : "left-3";
 
   return (
     <div className="space-y-4">
-      <div ref={wrap} className="relative overflow-hidden rounded-2xl border border-[var(--color-royal-400)]/40 bg-black shadow-[var(--shadow-glow-royal)]">
-        <video ref={video} className="aspect-video w-full bg-black" muted={muted} playsInline autoPlay onEnded={load} aria-label="NCVR TV" controls={false} />
-        {retro && <div aria-hidden="true" className="pointer-events-none absolute inset-0 bg-[repeating-linear-gradient(0deg,rgba(0,0,0,0.18)_0px,rgba(0,0,0,0.18)_1px,transparent_2px,transparent_4px)] mix-blend-multiply" />}
+      <div ref={wrap} className={`relative overflow-hidden bg-black ${isFs ? "flex h-full w-full items-center" : "rounded-2xl border border-[var(--color-royal-400)]/40 shadow-[var(--shadow-glow-royal)]"}`}>
+        <video ref={video} className={isFs ? "h-full w-full object-contain" : "aspect-video w-full bg-black"} muted={muted} playsInline autoPlay onEnded={load} aria-label="NCVR TV" controls={false} />
+        {/* Tap the picture: sound on + full screen (phones) — double-click on computers */}
+        <button type="button" aria-label={touch ? "Tap for sound and full screen" : "Click for sound, double-click for full screen"}
+          className="absolute inset-0 z-[1] cursor-pointer bg-transparent" onClick={onScreenTap}
+          onDoubleClick={() => (isFs ? exitFullscreen() : enterFullscreen())} />
+        {retro && <div aria-hidden="true" className="pointer-events-none absolute inset-0 z-[2] bg-[repeating-linear-gradient(0deg,rgba(0,0,0,0.18)_0px,rgba(0,0,0,0.18)_1px,transparent_2px,transparent_4px)] mix-blend-multiply" />}
         {item?.type !== "card" && (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={bugSrc} alt="" className={`pointer-events-none absolute right-3 top-3 opacity-80 drop-shadow-[0_0_8px_rgba(0,0,0,0.8)] ${bugSrc.includes("tv-logo") ? "w-24 sm:w-36" : "w-14 sm:w-20"}`} />
+          <img src={look.bugSrc} alt="" style={{ opacity: look.opacity / 100 }}
+            className={`pointer-events-none absolute z-[2] drop-shadow-[0_0_8px_rgba(0,0,0,0.8)] ${BUG_POS[look.position]} ${BUG_SIZE[look.size]}`} />
         )}
-        {now?.mode === "live" && <div className="absolute left-3 top-3 rounded bg-[var(--color-live)] px-2.5 py-1 text-xs font-black tracking-widest text-white shadow-[var(--shadow-glow-live)]">● LIVE</div>}
-        {block && item?.type === "video" && <div className="absolute left-3 top-3 rounded bg-[var(--color-gold)] px-2.5 py-1 text-[10px] font-black uppercase tracking-widest text-[var(--color-midnight)] sm:text-xs">{block.title}</div>}
+        {now?.mode === "live" && <div className={`pointer-events-none absolute z-[2] ${badgeSide} top-3 rounded bg-[var(--color-live)] px-2.5 py-1 text-xs font-black tracking-widest text-white shadow-[var(--shadow-glow-live)]`}>● LIVE</div>}
+        {item?.type === "video" && (block || item.feature) && <div className={`pointer-events-none absolute z-[2] ${badgeSide} top-3 rounded bg-[var(--color-gold)] px-2.5 py-1 text-[10px] font-black uppercase tracking-widest text-[var(--color-midnight)] sm:text-xs`}>{item.feature ? "Feature presentation" : block?.title}</div>}
         {item?.type === "commercial" && (
-          <div className="absolute left-3 top-3 rounded bg-black/70 px-2.5 py-1 text-[10px] font-bold uppercase tracking-widest text-white sm:text-xs">
+          <div className={`pointer-events-none absolute z-[2] ${badgeSide} top-3 rounded bg-black/70 px-2.5 py-1 text-[10px] font-bold uppercase tracking-widest text-white sm:text-xs`}>
             Advertisement{item.advertiser ? ` · ${item.advertiser}` : ""}
           </div>
         )}
         {item?.type === "video" && showCaption && (
-          <div className="absolute bottom-6 left-4 max-w-[80%] font-[family-name:var(--font-display)] leading-tight text-white [text-shadow:2px_2px_0_#000,0_0_12px_rgba(0,0,0,0.9)] sm:bottom-10 sm:left-8">
+          <div className={`pointer-events-none absolute z-[2] bottom-14 max-w-[80%] font-[family-name:var(--font-display)] sm:bottom-16 leading-tight text-white ${look.position === "bottom-left" ? "right-4 text-right" : "left-4 sm:left-8"}`} style={{ textShadow: "2px 2px 0 #000, 0 0 12px rgba(0,0,0,0.9)" }}>
             <div className="text-lg font-black uppercase sm:text-3xl">{item.artist}</div>
             <div className="text-sm sm:text-xl">&ldquo;{item.title}&rdquo;</div>
-            <div className="mt-1 text-[10px] uppercase tracking-[0.3em] text-[var(--color-gold)] sm:text-xs">{block ? block.title : "NCVR TV"}</div>
+            <div className="mt-1 text-[10px] uppercase tracking-[0.3em] text-[var(--color-gold)] sm:text-xs">{item.feature ? "Feature presentation" : block ? block.title : "NCVR TV"}</div>
           </div>
         )}
         {item?.type === "card" && (
-          <div className="absolute inset-0 grid place-items-center bg-[radial-gradient(circle_at_50%_40%,#1b0b4a_0%,#070B1E_75%)] p-6 text-center">
+          <div className="pointer-events-none absolute inset-0 z-[2] grid place-items-center bg-[radial-gradient(circle_at_50%_40%,#1b0b4a_0%,#070B1E_75%)] p-6 text-center">
             <div>
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={bugSrc} alt="NCVR TV" className="mx-auto w-3/4 max-w-md drop-shadow-[0_0_30px_rgba(140,60,255,0.5)]" />
+              <img src={look.bugSrc} alt="NCVR TV" className="mx-auto w-3/4 max-w-md drop-shadow-[0_0_30px_rgba(140,60,255,0.5)]" />
               <p className="mt-4 font-[family-name:var(--font-display)] text-lg font-bold uppercase tracking-[0.3em] text-white sm:text-2xl">We&apos;ll be right back</p>
               {countdown > 0 && <p className="mt-1 font-mono text-sm text-[var(--color-gold)]">{countdown}s</p>}
             </div>
           </div>
         )}
         {now?.mode === "off" && (
-          <div className="absolute inset-0 grid place-items-center p-6 text-center">
+          <div className="pointer-events-none absolute inset-0 z-[2] grid place-items-center p-6 text-center">
             <div>
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={bugSrc} alt="" className="mx-auto w-48 opacity-90" />
+              <img src={look.bugSrc} alt="" className="mx-auto w-48 opacity-90" />
               <p className="mt-4 text-[var(--color-muted)]">{now.reason}</p>
             </div>
           </div>
         )}
         {now && now.mode !== "off" && (
-          <div className="absolute bottom-2 right-2 flex gap-2">
+          <div className="absolute bottom-2 right-2 z-[3] flex gap-2">
             <button type="button" onClick={toggleSound} className="btn btn-gold px-3 py-1.5 text-xs">{muted ? "🔊 Tap for sound" : "Mute"}</button>
-            <button type="button" onClick={() => wrap.current?.requestFullscreen?.()} className="btn btn-ghost bg-black/50 px-3 py-1.5 text-xs">Full screen</button>
+            {isFs
+              ? <button type="button" onClick={exitFullscreen} className="btn btn-ghost bg-black/60 px-3 py-1.5 text-xs">Exit full screen</button>
+              : <button type="button" onClick={enterFullscreen} className="btn btn-ghost bg-black/50 px-3 py-1.5 text-xs">Full screen</button>}
           </div>
         )}
       </div>
@@ -191,6 +233,7 @@ export function TvPlayer({ bugSrc = "/brand/ncvr-emblem.webp" }: { bugSrc?: stri
         {now?.mode === "live" && <span className="font-semibold text-[var(--color-live)]">Live from the NCVR studio</span>}
         {item?.type === "video" && <span>Now: <strong>{item.artist}</strong> — {item.title}</span>}
         {item && item.type !== "video" && <span className="text-[var(--color-muted)]">Commercial break</span>}
+        {touch && <span className="text-xs text-[var(--color-gold)]">Tap the screen for full screen</span>}
         <label className="ml-auto flex items-center gap-2 text-xs text-[var(--color-muted)]">
           <input type="checkbox" checked={retro} onChange={(e) => setRetro(e.target.checked)} className="accent-[var(--color-gold)]" /> Retro scanlines
         </label>

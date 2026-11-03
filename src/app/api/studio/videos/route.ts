@@ -5,13 +5,19 @@ import { saveUpload, UploadError } from "@/lib/storage";
 import { audit } from "@/lib/audit";
 import { liveVideoStatus } from "@/lib/tv/live";
 import { config } from "@/lib/config";
+import { tvSettings } from "@/lib/tv/settings";
 
 export const runtime = "nodejs";
 
 /** Create the default "Saturday Morning Cartoons" block the first time NCVR TV is opened. */
 async function ensureDefaultBlocks() {
   if ((await db.tvBlock.count()) > 0) return;
-  await db.tvBlock.create({ data: { title: "Saturday Morning Cartoons", days: [6], startMinute: 8 * 60, endMinute: 12 * 60, kind: "CARTOON", commercials: true } });
+  await db.tvBlock.create({
+    data: {
+      title: "Saturday Vibe Amerime", days: [6], startMinute: 9 * 60, endMinute: 11 * 60, kind: "CARTOON", commercials: true,
+      breakEvery: 1, breakSeconds: 60, logoPath: "/brand/saturday-vibe-amerime.webp", logoPosition: "top-left", logoSize: "md",
+    },
+  });
 }
 
 export const GET = guarded("video.manage", async () => {
@@ -24,12 +30,12 @@ export const GET = guarded("video.manage", async () => {
   ]);
   return {
     videos, live, blocks, rtmpUrl: config.liveVideo.rtmpUrl ?? null, path: config.liveVideo.path,
-    settings: { enabled: station.tvCommercialsEnabled, breakEvery: station.tvBreakEvery, breakSeconds: station.tvBreakSeconds },
+    settings: tvSettings(station),
   };
 });
 
 const meta = z.object({
-  kind: z.enum(["MUSIC_VIDEO", "CARTOON", "PROGRAM", "COMMERCIAL"]).default("MUSIC_VIDEO"),
+  kind: z.enum(["MUSIC_VIDEO", "CARTOON", "PROGRAM", "MOVIE", "COMMERCIAL"]).default("MUSIC_VIDEO"),
   title: z.string().trim().min(1).max(200),
   artistName: z.string().trim().min(1).max(200),
   advertiser: z.string().trim().max(200).optional(),

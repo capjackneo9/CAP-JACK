@@ -116,7 +116,12 @@ cp /opt/ncvr/deploy/Caddyfile /etc/caddy/Caddyfile && systemctl reload caddy && 
 - **Server:** `rtmp://stream.nitecapviberadio.tech:1935`
 - **Stream key:** `live?user=ncvr&pass=YOUR-LIVE-PASSWORD`
 
-Recommended output: 1280×720 (or 1080p), 30 fps, x264, 2500–4500 kbps, keyframe interval 2 s, AAC 160 kbps.
+Recommended output: 1280×720 (or 1080p), 30 fps, x264, 2500–4500 kbps, **B-frames off** (x264 profile *baseline* or `bframes=0`), **keyframe interval 1 s**, AAC 160 kbps.
+
+**Lower delay (low-latency HLS, ~2–4 s):** if your `deploy/mediamtx.yml` was created before this option existed, switch it on:
+```bash
+cd /opt/ncvr && sed -i 's/^hlsVariant: mpegts$/hlsVariant: lowLatency\nhlsSegmentDuration: 1s\nhlsPartDuration: 200ms\nhlsSegmentCount: 7\nhlsAlwaysRemux: yes/' deploy/mediamtx.yml && docker compose restart mediamtx
+```
 NCVR TV switches to the live feed within ~20 s and returns to the schedule when you stop.
 
 ## 6. Go-live checklist

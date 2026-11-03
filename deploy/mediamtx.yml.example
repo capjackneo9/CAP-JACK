@@ -9,7 +9,12 @@ rtmp: yes
 rtmpAddress: :1935
 hls: yes
 hlsAddress: :8888
-hlsVariant: mpegts
+# Low-latency HLS (~2–4 s). Encoder: B-frames OFF, keyframe interval 1 s.
+hlsVariant: lowLatency
+hlsSegmentDuration: 1s
+hlsPartDuration: 200ms
+hlsSegmentCount: 7
+hlsAlwaysRemux: yes
 hlsAllowOrigin: '*'
 rtsp: no
 webrtc: no
