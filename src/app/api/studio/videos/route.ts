@@ -15,7 +15,7 @@ async function ensureDefaultBlocks() {
   await db.tvBlock.create({
     data: {
       title: "Saturday Vibe Amerime", days: [6], startMinute: 9 * 60, endMinute: 11 * 60, kind: "CARTOON", commercials: true,
-      breakEvery: 1, breakSeconds: 60, logoPath: "/brand/saturday-vibe-amerime.webp", logoPosition: "top-left", logoSize: "md",
+      breakEvery: 4, breakSeconds: 120, logoPath: "/brand/saturday-vibe-amerime.webp", logoPosition: "top-left", logoSize: "md",
     },
   });
 }

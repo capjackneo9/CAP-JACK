@@ -83,3 +83,27 @@ describe("feature presentation & screen look", async () => {
     expect(channelNow(eps16, spot, { enabled: true, breakEvery: 2, breakSeconds: 60 }, TV_EPOCH + 120 * 60_000)).toMatchObject({ type: "video", videoId: "e0", offsetSec: 0 });
   });
 });
+
+describe("Saturday Vibe Amerime — 16 × 7-min shows, 2-min break every 4 shows", async () => {
+  const { channelNow, fillBreak, TV_EPOCH } = await import("@/lib/tv/rotation");
+  const eps = Array.from({ length: 16 }, (_, i) => ({ id: `ep${i + 1}`, durationSec: 420 }));
+  const spots = Array.from({ length: 16 }, (_, i) => ({ id: `ad${i + 1}`, durationSec: 30, weight: 1 }));
+  const cfg = { enabled: true, breakEvery: 4, breakSeconds: 120 };
+  const at = (min: number) => TV_EPOCH + min * 60_000;
+  it("follows the half-hour pattern", () => {
+    expect(channelNow(eps, spots, cfg, at(0))).toMatchObject({ type: "video", videoId: "ep1" });
+    expect(channelNow(eps, spots, cfg, at(27.5))).toMatchObject({ type: "video", videoId: "ep4" });
+    expect(channelNow(eps, spots, cfg, at(28.25))?.type).toBe("commercial");   // 9:28 break
+    expect(channelNow(eps, spots, cfg, at(30))).toMatchObject({ type: "video", videoId: "ep5", offsetSec: 0 }); // 9:30
+    expect(channelNow(eps, spots, cfg, at(60))).toMatchObject({ type: "video", videoId: "ep9", offsetSec: 0 }); // 10:00
+    expect(channelNow(eps, spots, cfg, at(90))).toMatchObject({ type: "video", videoId: "ep13", offsetSec: 0 }); // 10:30
+    expect(channelNow(eps, spots, cfg, at(118.5))?.type).toBe("commercial");  // 10:58 final break
+    expect(channelNow(eps, spots, cfg, at(120))).toMatchObject({ videoId: "ep1", offsetSec: 0 }); // exactly 2 hours
+  });
+  it("each 2-minute break is four different 30-second spots, no filler", () => {
+    const items = fillBreak(spots, 120, 99);
+    expect(items).toHaveLength(4);
+    expect(items.every((i) => i.type === "commercial" && i.durationSec === 30)).toBe(true);
+    expect(new Set(items.map((i) => (i as { id: string }).id)).size).toBe(4);
+  });
+});
