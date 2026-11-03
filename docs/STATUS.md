@@ -33,6 +33,8 @@ The e2e run covered: all 11 public pages rendering; Now Playing showing API data
 - **Console presets:** save and load the whole console setup (pad sound bank, including sounds loaded from your computer, deck EQ and faders, crossfader, master and monitor, mic and FX, queue, DJ connection without the password). One preset per user can load automatically when the console powers on. *Verified in a browser:* save → reload → auto-restore.
 - **NCVR TV** (`/radio/tv`): music-video channel where every viewer sees the same video at the same moment, with an 80s-style lower third and channel bug. It switches to a live OBS feed (MediaMTX → HLS) automatically. *Verified:* upload → approve → plays in sync with the channel clock. The live feed path needs MediaMTX on the VPS (not testable here).
 - **Join the team** (`/radio/join`): internship application with interest areas and an optional PDF résumé, reviewed under **Studio → Team applications**. *Verified* end to end.
+- **Coming Soon screen:** a block with nothing uploaded shows its logo with "COMING SOON" and its times instead of music videos. This can be switched per block, and each block has a preview link.
+- **Amerime quick formats:** one click switches between "30-sec ad after every show" (the default: 16 × 7.5 min) and "2-min break every 4 shows".
 - **Saturday Vibe Amerime:** replaces Saturday Morning Cartoons, Sat 9–11 AM ET, with its own logo and a 1-minute break after every show.
   - Feature-presentation slot for a movie, weekly or on a single date, overrun-checked against the block end.
   - Per-block logo, placement and break timing.

@@ -11,7 +11,8 @@ type Look = { bugSrc: string; position: "top-left" | "top-right" | "bottom-left"
 type Now =
   | { mode: "live"; hlsUrl: string; serverTime: number; look?: Look }
   | { mode: "rotation"; serverTime: number; item: Item; offsetSec: number; remainingSec: number; breakRemainingSec?: number; next: Array<{ title: string; artist: string }>; block: Block; look?: Look }
-  | { mode: "off"; reason: string; block?: Block; look?: Look };
+  | { mode: "off"; reason: string; block?: Block; look?: Look }
+  | { mode: "soon"; serverTime: number; look?: Look; soon: { title: string; logo: string | null; when: string } };
 
 const BUG_POS = { "top-left": "left-3 top-3", "top-right": "right-3 top-3", "bottom-left": "bottom-14 left-3", "bottom-right": "bottom-14 right-3" } as const;
 const BUG_SIZE = { sm: "w-14 sm:w-24", md: "w-20 sm:w-36", lg: "w-28 sm:w-52" } as const;
@@ -21,7 +22,7 @@ const BUG_SIZE = { sm: "w-14 sm:w-24", md: "w-20 sm:w-36", lg: "w-28 sm:w-52" } 
  * breaks, and the live feed when a host broadcasts. Starts muted (autoplay
  * rules); unmuting pauses the radio player.
  */
-export function TvPlayer({ bugSrc = "/brand/ncvr-emblem.webp" }: { bugSrc?: string }) {
+export function TvPlayer({ bugSrc = "/brand/ncvr-emblem.webp", previewId }: { bugSrc?: string; previewId?: string }) {
   const video = useRef<HTMLVideoElement>(null);
   const wrap = useRef<HTMLDivElement>(null);
   const hls = useRef<{ destroy: () => void } | null>(null);
@@ -66,7 +67,7 @@ export function TvPlayer({ bugSrc = "/brand/ncvr-emblem.webp" }: { bugSrc?: stri
 
   const load = useCallback(async () => {
     try {
-      const r = await fetch("/api/tv/now", { cache: "no-store" });
+      const r = await fetch(`/api/tv/now${previewId ? `?preview=${encodeURIComponent(previewId)}` : ""}`, { cache: "no-store" });
       const j = (await r.json()) as Now;
       setNow(j);
       setFetchedAt(performance.now());
@@ -75,7 +76,7 @@ export function TvPlayer({ bugSrc = "/brand/ncvr-emblem.webp" }: { bugSrc?: stri
       setErr("Could not reach NCVR TV. Retrying…");
       setTimeout(load, 5000);
     }
-  }, []);
+  }, [previewId]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -134,7 +135,7 @@ export function TvPlayer({ bugSrc = "/brand/ncvr-emblem.webp" }: { bugSrc?: stri
         });
       }
     }
-    if (now.mode === "off") el.removeAttribute("src");
+    if (now.mode === "off" || now.mode === "soon") { el.pause(); el.removeAttribute("src"); el.load(); }
   }, [now, fetchedAt, load]);
 
   useEffect(() => () => { hls.current?.destroy(); if (cardTimer.current) clearTimeout(cardTimer.current); }, []);
@@ -182,7 +183,7 @@ export function TvPlayer({ bugSrc = "/brand/ncvr-emblem.webp" }: { bugSrc?: stri
           className="absolute inset-0 z-[1] cursor-pointer bg-transparent" onClick={onScreenTap}
           onDoubleClick={() => (isFs ? exitFullscreen() : enterFullscreen())} />
         {retro && <div aria-hidden="true" className="pointer-events-none absolute inset-0 z-[2] bg-[repeating-linear-gradient(0deg,rgba(0,0,0,0.18)_0px,rgba(0,0,0,0.18)_1px,transparent_2px,transparent_4px)] mix-blend-multiply" />}
-        {item?.type !== "card" && (
+        {item?.type !== "card" && now?.mode !== "soon" && (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={look.bugSrc} alt="" style={{ opacity: look.opacity / 100 }}
             className={`pointer-events-none absolute z-[2] drop-shadow-[0_0_8px_rgba(0,0,0,0.8)] ${BUG_POS[look.position]} ${BUG_SIZE[look.size]}`} />
@@ -211,6 +212,15 @@ export function TvPlayer({ bugSrc = "/brand/ncvr-emblem.webp" }: { bugSrc?: stri
             </div>
           </div>
         )}
+        {now?.mode === "soon" && (
+          <div className="pointer-events-none absolute inset-0 z-[2] flex flex-col items-center justify-center gap-[2%] overflow-hidden bg-[radial-gradient(circle_at_50%_35%,#3b0d6b_0%,#120a3a_45%,#070B1E_80%)] p-[4%] text-center">
+            <div aria-hidden="true" className="absolute inset-0 bg-[radial-gradient(2px_2px_at_20%_30%,#fff8,transparent),radial-gradient(2px_2px_at_70%_20%,#ffd70099,transparent),radial-gradient(1.5px_1.5px_at_85%_70%,#fff8,transparent),radial-gradient(2px_2px_at_35%_80%,#ff00a899,transparent),radial-gradient(1.5px_1.5px_at_55%_55%,#39ff1488,transparent)] motion-safe:animate-pulse" />
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={now.soon.logo ?? look.bugSrc} alt={now.soon.title} className="relative max-h-[62%] min-h-0 w-auto max-w-[70%] object-contain drop-shadow-[0_0_30px_rgba(160,60,255,0.6)]" />
+            <p className="relative font-[family-name:var(--font-display)] text-xl font-black uppercase leading-none tracking-[0.3em] text-[var(--color-gold)] drop-shadow-[0_0_12px_rgba(212,175,55,0.6)] sm:text-5xl">Coming soon</p>
+            <p className="relative font-mono text-[9px] uppercase tracking-[0.2em] text-white/80 sm:text-sm">{now.soon.when}</p>
+          </div>
+        )}
         {now?.mode === "off" && (
           <div className="pointer-events-none absolute inset-0 z-[2] grid place-items-center p-6 text-center">
             <div>
@@ -220,7 +230,7 @@ export function TvPlayer({ bugSrc = "/brand/ncvr-emblem.webp" }: { bugSrc?: stri
             </div>
           </div>
         )}
-        {now && now.mode !== "off" && (
+        {now && now.mode !== "off" && now.mode !== "soon" && (
           <div className="absolute bottom-2 right-2 z-[3] flex gap-2">
             <button type="button" onClick={toggleSound} className="btn btn-gold px-3 py-1.5 text-xs">{muted ? "🔊 Tap for sound" : "Mute"}</button>
             {isFs

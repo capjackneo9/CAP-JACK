@@ -4,6 +4,7 @@ import { activeBlock, channelNow, featureOffset, resolveLook, upNext, TV_EPOCH }
 import { liveVideoStatus } from "@/lib/tv/live";
 import { config } from "@/lib/config";
 import { fromStationTime, toStationTime } from "@/lib/schedule/time";
+import { DAY_SHORT, formatMinute } from "@/lib/schedule";
 import type { TvKind } from "@prisma/client";
 
 export const dynamic = "force-dynamic";
@@ -16,11 +17,24 @@ const noStore = { headers: { "Cache-Control": "no-store" } };
  *  live feed → scheduled block (feature presentation, then episodes) → music-video rotation,
  *  with commercial breaks on a shared clock, plus the on-screen logo ("look").
  */
-export async function GET() {
+function soonResponse(block: { title: string; days: number[]; startMinute: number; endMinute: number; logoPath: string | null }, look: ReturnType<typeof resolveLook>) {
+  return NextResponse.json({
+    mode: "soon", serverTime: Date.now(), look,
+    soon: { title: block.title, logo: block.logoPath, when: `${block.days.map((d) => DAY_SHORT[d]).join(", ")} · ${formatMinute(block.startMinute)}–${block.endMinute === 1440 ? "12 AM" : formatMinute(block.endMinute)} ET` },
+  }, noStore);
+}
+
+export async function GET(req: Request) {
   const now = Date.now();
+  const preview = new URL(req.url).searchParams.get("preview");
   let station: Awaited<ReturnType<typeof db.station.findUnique>> = null;
   try { station = await db.station.findUnique({ where: { slug: "ncvr" } }); } catch { /* handled below */ }
 
+  // Preview a block's "Coming soon" screen: /radio/tv?preview=<blockId>
+  if (preview) {
+    const pb = await db.tvBlock.findUnique({ where: { id: preview } }).catch(() => null);
+    if (pb) return soonResponse(pb, resolveLook(station, pb));
+  }
   const live = await liveVideoStatus();
   if (live.live && live.hlsUrl) {
     return NextResponse.json({ mode: "live", hlsUrl: live.hlsUrl, serverTime: now, look: resolveLook(station, null) }, noStore);
@@ -52,6 +66,7 @@ export async function GET() {
     const fetchKind = (kind: TvKind) => db.musicVideo.findMany({ where: { kind, status: "APPROVED" }, orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }], select });
     let content = await fetchKind(block?.kind ?? "MUSIC_VIDEO");
     let origin = block ? fromStationTime(lt.year, lt.month, lt.day, block.startMinute, tz).getTime() : TV_EPOCH;
+    if (block && content.length === 0 && block.comingSoonWhenEmpty) return soonResponse(block, resolveLook(station, block));
     if (block && content.length === 0) { // nothing uploaded for this block yet → regular rotation
       block = null;
       content = await fetchKind("MUSIC_VIDEO");

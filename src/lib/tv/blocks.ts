@@ -19,6 +19,7 @@ export const blockBody = z.object({
   logoSize: z.enum(LOGO_SIZES).nullable().optional(),
   featureVideoId: z.string().max(64).nullable().optional(),
   featureStartMinute: z.number().int().min(0).max(1439).nullable().optional(),
+  comingSoonWhenEmpty: z.boolean().optional(),
   featureDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Date must be YYYY-MM-DD").nullable().optional(),
 });
 

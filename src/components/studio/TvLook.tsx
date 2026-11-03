@@ -76,6 +76,7 @@ export interface BlockFull {
   id: string; title: string; days: number[]; startMinute: number; endMinute: number; kind: string; commercials: boolean; active: boolean;
   breakEvery: number | null; breakSeconds: number | null; logoPath: string | null; logoPosition: Pos | null; logoSize: Size | null;
   featureVideoId: string | null; featureStartMinute: number | null; featureDate: string | null;
+  comingSoonWhenEmpty: boolean;
 }
 interface Vid { id: string; kind: string; title: string; artistName: string; durationSec: number; status: string }
 
@@ -104,6 +105,7 @@ export function BlockEditor({ block, videos, channel, onSaved, onMsg }: {
     const r = await fetch(`/api/studio/tv/blocks/${b.id}`, json("PATCH", {
       breakEvery: b.breakEvery, breakSeconds: b.breakSeconds, logoPath: b.logoPath, logoPosition: b.logoPosition, logoSize: b.logoSize,
       featureVideoId: b.featureVideoId, featureStartMinute: b.featureVideoId ? b.featureStartMinute : null, featureDate: b.featureVideoId ? b.featureDate : null,
+      comingSoonWhenEmpty: b.comingSoonWhenEmpty,
     }));
     const j = await r.json();
     setBusy(false);
@@ -126,10 +128,26 @@ export function BlockEditor({ block, videos, channel, onSaved, onMsg }: {
           <select aria-label="Logo size" className="field" value={b.logoSize ?? "md"} onChange={(e) => setB({ ...b, logoSize: e.target.value as Size })}>{SIZES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>
         </div>
         {b.logoPath && <button type="button" className="text-[var(--color-muted)] underline" onClick={() => setB({ ...b, logoPath: null })}>Use channel logo instead</button>}
+        <div className="rounded-lg border border-white/10 p-2">
+          <div className="font-semibold">Before episodes are uploaded</div>
+          <label className="mt-1 flex items-center gap-2"><input type="radio" name={`soon-${b.id}`} checked={b.comingSoonWhenEmpty} onChange={() => setB({ ...b, comingSoonWhenEmpty: true })} className="accent-[var(--color-gold)]" />Show “Coming soon” screen</label>
+          <label className="flex items-center gap-2"><input type="radio" name={`soon-${b.id}`} checked={!b.comingSoonWhenEmpty} onChange={() => setB({ ...b, comingSoonWhenEmpty: false })} className="accent-[var(--color-gold)]" />Play music videos instead</label>
+          <a href={`/radio/tv?preview=${b.id}`} target="_blank" className="mt-1 inline-block text-[var(--color-gold)] underline">Preview Coming Soon screen ↗</a>
+          {episodes.length === 0 && <p className="mt-1 text-[10px] text-[var(--color-gold)]">No episodes on air yet — viewers currently see {b.comingSoonWhenEmpty ? "the Coming Soon screen" : "music videos"} during this block.</p>}
+        </div>
       </div>
 
       <div className="space-y-2">
         <div className="kicker text-[10px]">Commercial timing</div>
+        <div className="flex flex-wrap gap-1" role="group" aria-label="Quick formats">
+          {([[1, 30, "30-sec ad after every show"], [4, 120, "2-min break every 4 shows"]] as const).map(([every, secs, label]) => {
+            const on = b.breakEvery === every && b.breakSeconds === secs;
+            return (
+              <button key={label} type="button" aria-pressed={on} onClick={() => setB({ ...b, breakEvery: every, breakSeconds: secs, commercials: true })}
+                className={`btn px-2.5 py-1 text-[10px] ${on ? "btn-gold" : "btn-ghost"}`}>{label}</button>
+            );
+          })}
+        </div>
         <label className="flex items-center gap-2"><input type="checkbox" checked={b.breakEvery == null} className="accent-[var(--color-gold)]"
           onChange={(e) => setB({ ...b, breakEvery: e.target.checked ? null : channel.breakEvery, breakSeconds: e.target.checked ? null : channel.breakSeconds })} />
           Same as channel ({channel.breakEvery} video{channel.breakEvery > 1 ? "s" : ""} / {channel.breakSeconds}s)</label>

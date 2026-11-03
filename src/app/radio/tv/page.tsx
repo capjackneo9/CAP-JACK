@@ -8,11 +8,14 @@ import { DAY_SHORT, formatMinute } from "@/lib/schedule";
 export const dynamic = "force-dynamic";
 export const metadata = { title: "NCVR TV", description: "Music videos around the clock, Saturday Vibe Amerime, and live video from the NCVR studio." };
 
-export default async function TvPage() {
-  const [blocks, station] = await Promise.all([
+export default async function TvPage({ searchParams }: { searchParams: Promise<{ preview?: string }> }) {
+  const { preview } = await searchParams;
+  const [blocks, station, counts] = await Promise.all([
     db.tvBlock.findMany({ where: { active: true }, orderBy: [{ startMinute: "asc" }] }).catch(() => []),
     db.station.findUnique({ where: { slug: "ncvr" } }).catch(() => null),
+    db.musicVideo.groupBy({ by: ["kind"], where: { status: "APPROVED" }, _count: true }).catch(() => []),
   ]);
+  const onAir = new Set(counts.filter((c) => c._count > 0).map((c) => c.kind));
   const hasTvLogo = existsSync(path.join(process.cwd(), "public", BRAND.tvLogo));
   const channelLogo = station?.tvBugPath ?? (hasTvLogo ? BRAND.tvLogo : "/brand/ncvr-emblem.webp");
   const playerFirst = station?.tvLayout === "player-top";
@@ -37,7 +40,7 @@ export default async function TvPage() {
           <p className="mt-3 max-w-3xl text-[var(--color-muted)]">{intro}</p>
         </header>
       )}
-      <TvPlayer bugSrc={channelLogo} />
+      <TvPlayer bugSrc={channelLogo} previewId={preview} />
       {blocks.length > 0 && (
         <section className="mt-6 glass p-5">
           <div className="kicker">NCVR TV schedule · Eastern Time</div>
@@ -49,6 +52,7 @@ export default async function TvPage() {
                 <div>
                   <div className="font-[family-name:var(--font-display)] font-bold">{b.title}</div>
                   <div className="font-mono text-xs text-[var(--color-muted)]">{b.days.map((d) => DAY_SHORT[d]).join(", ")} · {formatMinute(b.startMinute)} – {b.endMinute === 1440 ? "12 AM" : formatMinute(b.endMinute)}</div>
+                  {!onAir.has(b.kind) && b.comingSoonWhenEmpty && <div className="mt-1 inline-block rounded bg-[var(--color-gold)] px-2 py-0.5 text-[10px] font-black uppercase tracking-widest text-[var(--color-midnight)]">Coming soon</div>}
                   {b.featureVideoId && <div className="mt-1 text-xs text-[var(--color-gold)]">★ Feature presentation at {formatMinute(b.featureStartMinute ?? b.startMinute)}{b.featureDate ? ` on ${b.featureDate}` : ""}</div>}
                 </div>
               </li>

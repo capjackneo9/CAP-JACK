@@ -469,28 +469,30 @@ model MusicVideo {
 
 /// NCVR TV schedule block, e.g. "Saturday Morning Cartoons" Sat 8 AM–12 PM ET.
 model TvBlock {
-  id                 String   @id @default(cuid())
-  title              String
-  days               Int[]
-  startMinute        Int
-  endMinute          Int
-  kind               TvKind
-  commercials        Boolean  @default(true)
-  active             Boolean  @default(true)
+  id                  String   @id @default(cuid())
+  title               String
+  days                Int[]
+  startMinute         Int
+  endMinute           Int
+  kind                TvKind
+  commercials         Boolean  @default(true)
+  active              Boolean  @default(true)
   /// Per-block break timing (null = use the channel settings)
-  breakEvery         Int?
-  breakSeconds       Int?
+  breakEvery          Int?
+  breakSeconds        Int?
   /// On-screen logo for this block (null = channel logo)
-  logoPath           String?
-  logoPosition       String?
-  logoSize           String?
+  logoPath            String?
+  logoPosition        String?
+  logoSize            String?
   /// Optional feature presentation inside the block (e.g. a 1-hour movie)
-  featureVideoId     String?
-  featureStartMinute Int?
+  featureVideoId      String?
+  featureStartMinute  Int?
   /// Only on this date (station-local, YYYY-MM-DD). Null = every week.
-  featureDate        String?
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  featureDate         String?
+  /// While nothing is uploaded for this block: show a "Coming soon" screen (true) or play music videos (false)
+  comingSoonWhenEmpty Boolean  @default(true)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
 }
 
 enum ApplicationStatus {
