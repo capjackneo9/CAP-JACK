@@ -20,6 +20,7 @@ export function DeckPanel({ deck, meter, library, label, sub, onLoaded }: { deck
   const [err, setErr] = useState<string | null>(null);
   const [trackId, setTrackId] = useState<string | null>(null);
   const [jogMode, setJogMode] = useState<JogMode>("scratch");
+  const [pitch, setPitch] = useState(0); // playback-rate offset, ±0.08
   const touchHeld = useRef(false);     // controller jog top is being touched
   const hasTouch = useRef(false);      // this controller reports jog touch (so edge turns = nudge)
   const releaseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -45,6 +46,11 @@ export function DeckPanel({ deck, meter, library, label, sub, onLoaded }: { deck
     deck.eq.setFilter(eq.filter); deck.trim.gain.value = eq.trim; deck.fader.gain.value = eq.fader;
   }, [deck, eq]);
   useEffect(() => { if (deck) deck.cue.gain.value = cue ? 1 : 0; }, [deck, cue]);
+  useEffect(() => {
+    if (!deck) return;
+    deck.el.preservesPitch = false; // vinyl-style: tempo and pitch move together
+    deck.el.playbackRate = 1 + pitch;
+  }, [deck, pitch]);
 
   const el = deck?.el;
   const pos = deck?.position ?? 0;
@@ -57,9 +63,9 @@ export function DeckPanel({ deck, meter, library, label, sub, onLoaded }: { deck
       deck.el.currentTime = Math.min(Math.max(0, deck.el.currentTime + delta * NUDGE_SECONDS_PER_TICK.paused), deck.el.duration - 0.05);
       return;
     }
-    deck.el.playbackRate = Math.min(1.25, Math.max(0.75, 1 + delta * 0.03));
+    deck.el.playbackRate = Math.min(1.25, Math.max(0.75, 1 + pitch + delta * 0.03));
     if (bendTimer.current) clearTimeout(bendTimer.current);
-    bendTimer.current = setTimeout(() => { deck.el.playbackRate = 1; }, 120);
+    bendTimer.current = setTimeout(() => { deck.el.playbackRate = 1 + pitch; }, 120);
   }
 
   function jog(delta: number) {
@@ -87,7 +93,11 @@ export function DeckPanel({ deck, meter, library, label, sub, onLoaded }: { deck
   useConsoleControl([deck?.id === "B" ? "deckB" : "deckA"], (a) => {
     if (!deck) return;
     const param = a.target.split(".")[1];
-    if (a.kind === "range" && ["trim", "filter", "low", "mid", "high", "fader"].includes(param)) {
+    if (a.kind === "range" && param === "pitch") {
+      setPitch(scaleRange(a.target, a.value));
+    } else if (a.kind === "button" && param === "scratchMode") {
+      setJogMode((m) => (m === "scratch" ? "nudge" : "scratch"));
+    } else if (a.kind === "range" && ["trim", "filter", "low", "mid", "high", "fader"].includes(param)) {
       setEq((prev) => ({ ...prev, [param]: scaleRange(a.target, a.value) }));
     } else if (a.kind === "button" && param === "play") {
       if (deck.el.src) { if (deck.playing) deck.pause(); else deck.play().catch((e) => setErr(e.message)); }
@@ -125,7 +135,7 @@ export function DeckPanel({ deck, meter, library, label, sub, onLoaded }: { deck
       <div className="mt-3 flex items-center gap-3">
         <Platter deck={deck} enabled={jogMode === "scratch"} />
         <div className="space-y-1 text-xs">
-          <div className="label">Jog wheel</div>
+          <div className="label">Jog wheel{pitch !== 0 && <span className="ml-2 font-mono text-[var(--color-gold)]">pitch {pitch > 0 ? "+" : ""}{(pitch * 100).toFixed(1)}%</span>}</div>
           <div className="flex gap-1" role="group" aria-label="Jog wheel mode">
             {(["scratch", "nudge"] as const).map((m) => (
               <button key={m} type="button" aria-pressed={jogMode === m} onClick={() => setJogMode(m)}
@@ -153,6 +163,7 @@ export function DeckPanel({ deck, meter, library, label, sub, onLoaded }: { deck
           <Knob label="Mid dB" value={eq.mid} min={-24} max={12} step={0.5} onChange={(v) => setEq({ ...eq, mid: v })} />
           <Knob label="Low dB" value={eq.low} min={-24} max={12} step={0.5} onChange={(v) => setEq({ ...eq, low: v })} />
           <Knob label="Channel" value={eq.fader} min={0} max={1} onChange={(v) => setEq({ ...eq, fader: v })} />
+          <Knob label="Pitch %" value={pitch * 100} min={-8} max={8} step={0.1} onChange={(v) => setPitch(Math.abs(v) < 0.1 ? 0 : v / 100)} tone="ncvr-range-gold" />
         </div>
         <MeterBar meter={meter} label={label.slice(-1)} />
       </div>

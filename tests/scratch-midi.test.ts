@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { interpret, learn, learnMismatch, parseMidi } from "../src/lib/audio/midi";
+import { CONTROLLER_PROFILES, TARGET_BY_ID, interpret, learn, learnMismatch, parseMidi, profileForDevice, scaleRange } from "../src/lib/audio/midi";
 import { angleToSeconds, clampPosition } from "../src/lib/audio/scratch";
 
 describe("MIDI learn — jog touch, pitch bend, feedback", () => {
@@ -45,5 +45,35 @@ describe("scratch helpers", () => {
     expect(clampPosition(-3, 100)).toBe(0);
     expect(clampPosition(200, 100)).toBeCloseTo(99.95);
     expect(clampPosition(5, NaN)).toBe(5);
+  });
+});
+
+describe("Numark Party Mix ready-made map", () => {
+  const pm = CONTROLLER_PROFILES.find((p) => p.id === "numark-party-mix")!;
+  const run = (bytes: number[]) => interpret(parseMidi(bytes)!, pm.mapping);
+
+  it("is picked for the device name Windows/Mac report", () => {
+    expect(profileForDevice("Numark Party Mix")?.id).toBe("numark-party-mix");
+    expect(profileForDevice("Party Mix II")?.id).toBe("numark-party-mix");
+    expect(profileForDevice("DDJ-200")).toBeUndefined();
+  });
+  it("only maps to real console controls", () => {
+    for (const t of Object.values(pm.mapping)) expect(TARGET_BY_ID.has(t)).toBe(true);
+  });
+  it("drives decks, jog, crossfader, load and pads", () => {
+    expect(run([0x90, 0x00, 0x7f])).toEqual({ target: "deckA.play", kind: "button" });
+    expect(run([0x91, 0x01, 0x7f])).toEqual({ target: "deckB.cue", kind: "button" });
+    expect(run([0xb0, 0x06, 0x7f])).toEqual({ target: "deckA.jog", kind: "jog", delta: -1 });
+    expect(run([0xb1, 0x06, 0x03])).toEqual({ target: "deckB.jog", kind: "jog", delta: 3 });
+    expect(run([0xbf, 0x08, 0x7f])).toEqual({ target: "crossfader", kind: "range", value: 1 });
+    expect(run([0x9f, 0x03, 0x7f])).toEqual({ target: "deckB.load", kind: "button" });
+    expect(run([0x94, 0x14, 0x7f])).toEqual({ target: "pad1", kind: "button" });
+    expect(run([0x95, 0x17, 0x7f])).toEqual({ target: "pad8", kind: "button" });
+    expect(run([0x90, 0x07, 0x7f])).toEqual({ target: "deckA.scratchMode", kind: "button" });
+  });
+  it("pitch fader: centre is exactly 0, ends are ±8%", () => {
+    expect(scaleRange("deckA.pitch", 64 / 127)).toBe(0);
+    expect(scaleRange("deckA.pitch", 1)).toBeCloseTo(0.08);
+    expect(scaleRange("deckA.pitch", 0)).toBeCloseTo(-0.08);
   });
 });

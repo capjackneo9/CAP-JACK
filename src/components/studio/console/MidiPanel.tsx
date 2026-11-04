@@ -1,11 +1,12 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { CONTROL_TARGETS, describeKey, interpret, learn, learnMismatch, parseMidi, type MidiKey, type MidiMessage } from "@/lib/audio/midi";
+import { CONTROLLER_PROFILES, CONTROL_TARGETS, PARTY_MIX_GUIDE, describeKey, profileForDevice, interpret, learn, learnMismatch, parseMidi, type MidiKey, type MidiMessage } from "@/lib/audio/midi";
 import { emitControl } from "./controlBus";
 import { usePresetSlot } from "./presets";
 
 const LS_MAP = "ncvr.midi.mapping";
 const LS_AUTO = "ncvr.midi.autoconnect";
+const LS_FLIP = "ncvr.midi.flipPitch";
 
 function readLS<T>(k: string, fallback: T): T {
   try { const v = localStorage.getItem(k); return v ? (JSON.parse(v) as T) : fallback; } catch { return fallback; }
@@ -30,6 +31,15 @@ export function MidiPanel() {
   const [log, setLog] = useState<Array<{ t: number; dev: string; raw: string; desc: string }>>([]);
   const [showLog, setShowLog] = useState(false);
   const [portIssues, setPortIssues] = useState<string[]>([]);
+  const [flipPitch, setFlipPitch] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [guide, setGuide] = useState<number | null>(null);
+  const guideRef = useRef<number | null>(null);
+  guideRef.current = guide;
+  const guideUsed = useRef(new Set<string>());   // controls already assigned during this guided run
+  const guideWait = useRef(0);                    // ignore input briefly after each step
+  const flipRef = useRef(false);
+  flipRef.current = flipPitch;
   const accessRef = useRef<MIDIAccess | null>(null);
   const learnRef = useRef<string | null>(null);
   const mapRef = useRef(mapping);
@@ -41,7 +51,22 @@ export function MidiPanel() {
   useEffect(() => {
     setSupported(typeof navigator !== "undefined" && "requestMIDIAccess" in navigator);
     setMapping(readLS(LS_MAP, {}));
+    setFlipPitch(readLS(LS_FLIP, false));
   }, []);
+
+  const applyProfile = useCallback((id: string) => {
+    const p = CONTROLLER_PROFILES.find((x) => x.id === id);
+    if (!p) return;
+    setMapping(p.mapping); writeLS(LS_MAP, p.mapping); setLearning(null);
+    setNotice(`${p.name} map loaded — ${Object.keys(p.mapping).length} controls. ${p.notes}`);
+  }, []);
+
+  // First time a known controller is plugged in with nothing mapped yet, load its map automatically.
+  useEffect(() => {
+    if (Object.keys(mapRef.current).length) return;
+    const p = devices.map(profileForDevice).find(Boolean);
+    if (p) applyProfile(p.id);
+  }, [devices, applyProfile]);
 
   const onMessage = useCallback((e: MIDIMessageEvent) => {
     if (!e.data || e.data.length === 0 || e.data[0] >= 0xf8) return; // clock / active-sensing noise
@@ -53,6 +78,22 @@ export function MidiPanel() {
     setLast(msg);
     setBlink(true);
     setTimeout(() => setBlink(false), 90);
+    const step = guideRef.current;
+    if (step !== null) {
+      const t = PARTY_MIX_GUIDE[step]?.target;
+      if (!t || performance.now() < guideWait.current || guideUsed.current.has(msg.key)) return;
+      if (msg.type === "note" && !msg.on) return;
+      const why = learnMismatch(msg, t);
+      if (why) { setHint(why); return; }
+      const next = learn(mapRef.current, msg, t);
+      setMapping(next); writeLS(LS_MAP, next); mapRef.current = next;
+      guideUsed.current.add(msg.key);
+      guideWait.current = performance.now() + 700;
+      setHint(null);
+      setGuide(step + 1 < PARTY_MIX_GUIDE.length ? step + 1 : null);
+      if (step + 1 >= PARTY_MIX_GUIDE.length) setNotice("Controller setup finished — every control is mapped. Click Save on the Presets bar to keep it.");
+      return;
+    }
     const target = learnRef.current;
     if (target) {
       const why = learnMismatch(msg, target);
@@ -62,6 +103,7 @@ export function MidiPanel() {
       return;
     }
     const action = interpret(msg, mapRef.current);
+    if (action?.kind === "range" && action.target.endsWith(".pitch") && flipRef.current) action.value = 1 - action.value;
     if (action) emitControl(action);
   }, []);
 
@@ -128,12 +170,29 @@ export function MidiPanel() {
         <button type="button" className={`btn btn-ghost px-3 py-1.5 text-xs ${access ? "" : "ml-auto"}`} aria-expanded={open} onClick={() => setOpen(!open)}>{open ? "Hide mapping" : "Map controls (MIDI Learn)"}</button>
       </div>
       {err && <p className="mt-2 text-xs text-red-300">{err}</p>}
+      {notice && (
+        <p role="status" className="mt-2 rounded-lg border border-[var(--color-signal)]/40 bg-[var(--color-signal)]/10 p-2 text-xs">
+          {notice} <button type="button" className="ml-2 underline" onClick={() => setNotice(null)}>OK</button>
+        </p>
+      )}
       {portIssues.length > 0 && (
         <p role="alert" className="mt-2 rounded-lg border border-red-400/50 bg-red-500/10 p-2 text-xs">
           <strong>{portIssues.join(", ")}</strong> is connected but another program is holding it, so the console can&apos;t hear it.
           Fully quit <strong>Serato DJ Lite, VirtualDJ, Rekordbox, Mixxx, djay</strong> (check the system tray too), then press <strong>Reconnect</strong>.
           If it still fails, unplug the USB cable for 5 seconds and plug it back in.
         </p>
+      )}
+      {guide !== null && (
+        <div role="status" className="mt-3 rounded-lg border border-[var(--color-gold)]/60 bg-[var(--color-gold)]/10 p-3">
+          <div className="text-[10px] uppercase tracking-widest text-[var(--color-muted)]">Controller setup · step {guide + 1} of {PARTY_MIX_GUIDE.length}</div>
+          <div className="mt-1 text-lg font-bold">{PARTY_MIX_GUIDE[guide].prompt}</div>
+          {hint && <p className="mt-1 text-xs text-[var(--color-gold)]">{hint}</p>}
+          <div className="mt-2 flex gap-2">
+            <button type="button" className="btn btn-ghost px-3 py-1 text-xs" onClick={() => { setHint(null); setGuide(guide + 1 < PARTY_MIX_GUIDE.length ? guide + 1 : null); }}>Skip</button>
+            {guide > 0 && <button type="button" className="btn btn-ghost px-3 py-1 text-xs" onClick={() => { setHint(null); setGuide(guide - 1); }}>Back</button>}
+            <button type="button" className="btn btn-ghost px-3 py-1 text-xs" onClick={() => { setHint(null); setGuide(null); }}>Stop</button>
+          </div>
+        </div>
       )}
       {learning && (
         <div role="status" className="mt-3 rounded-lg border border-[var(--color-gold)]/60 bg-[var(--color-gold)]/10 p-2 text-sm">
@@ -164,6 +223,23 @@ export function MidiPanel() {
       )}
       {open && (
         <div className="mt-3 space-y-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <button type="button" className="btn btn-gold px-3 py-1 text-xs" disabled={!access || !devices.length}
+              onClick={() => { guideUsed.current = new Set(); guideWait.current = 0; setLearning(null); setNotice(null); setGuide(0); }}>
+              Guided setup (1 minute)
+            </button>
+            {CONTROLLER_PROFILES.map((p) => (
+              <button key={p.id} type="button" className="btn btn-primary px-3 py-1 text-xs"
+                onClick={() => { if (!count || window.confirm(`Replace your current mapping with the ${p.name} map?`)) applyProfile(p.id); }}>
+                Load {p.name} map
+              </button>
+            ))}
+            <label className="flex items-center gap-2 text-xs text-[var(--color-muted)]">
+              <input type="checkbox" checked={flipPitch} className="accent-[var(--color-gold)]"
+                onChange={(e) => { setFlipPitch(e.target.checked); writeLS(LS_FLIP, e.target.checked); }} />
+              Reverse pitch faders
+            </label>
+          </div>
           <p className="text-xs text-[var(--color-muted)]">
             Click <strong>Learn</strong>, then touch the matching knob, fader, button or jog wheel. Knobs, faders and jog wheels must be turned (not pressed). For scratching, map both the jog wheel (turn it) and the jog wheel top (rest your hand on it).
             Your mapping is remembered in this browser and saved inside console presets.

@@ -6,10 +6,29 @@ Works in **Chrome or Edge on a computer** (Web MIDI). Safari and phones are not 
 1. Plug the controller in by USB **before** opening the console, and **fully quit Serato DJ Lite / VirtualDJ / Rekordbox /
    Mixxx** (system tray too). On Windows only one program can use a controller; if another app holds it the console shows a red warning.
 2. Studio → **Broadcast console** → **Power on console** → **Connect controller** (allow MIDI if the browser asks).
-3. Click **Map controls (MIDI Learn)**. For each control: click **Learn**, then move/press it on the controller.
-   Suggested Party Mix layout: crossfader → Crossfader · each deck's Play/Cue buttons → Play / Cue ·
-   jog wheels → *Jog wheel (turn)* (turn by the outer edge) and *Jog wheel top (touch = scratch)* (rest your hand on top) · volume faders → Channel volume · Treble/Bass knobs → EQ high / EQ low ·
-   Filter knob → Filter · Pad buttons → Pads 1–8 · Load buttons → Load next queued track.
+3. **Numark Party Mix / Party Mix II:** the console loads the Party Mix map by itself the first time it sees the controller
+   (or click **Map controls → Load Numark Party Mix / Party Mix II map**). If any control doesn't respond, click
+   **Map controls → Guided setup (1 minute)**: the console names each control in turn (“Move the LEFT volume fader”) and
+   learns it as you touch it — this always matches your exact unit. What each control does:
+
+   | Party Mix | Console |
+   |---|---|
+   | Play / Cue (each deck) | Play-pause / back to start |
+   | Jog wheel | Scratch (SCRATCH mode) or nudge (NUDGE mode) |
+   | Scratch button | Switch the deck between SCRATCH and NUDGE |
+   | Headphone (PFL) button | Headphone cue for that deck |
+   | Volume fader | Channel volume |
+   | Gain, Treble, Bass knobs | Trim, EQ high, EQ low |
+   | Pitch fader | Tempo ±8% (tick *Reverse pitch faders* if it moves the wrong way) |
+   | Crossfader | Crossfader |
+   | Master knob | Master volume (transmitted) |
+   | Headphone volume knob | Headphone volume |
+   | Load buttons | Load next queued track onto that deck |
+   | 4 pads, left deck / right deck | Console pads 1–4 / 5–8 |
+
+   Sync, browse and the pad-mode buttons have no console function. The ready-made map comes from the community Mixxx
+   mapping for the original Party Mix (there is no published Party Mix II map), so the Guided setup is the sure way on a Party Mix II.
+   Any other controller: click **Learn** next to each console control, then move/press it on the controller.
 4. Click **Save** on the Presets bar so the mapping comes back every time (★ Load on startup).
 5. **Headphones:** in the console's *Headphone cue output*, choose the Party Mix audio device, plug headphones
    into the controller, and press each deck's PFL/Cue button to preview. (Chrome/Edge support this.)

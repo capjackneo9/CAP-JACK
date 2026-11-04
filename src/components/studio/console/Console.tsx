@@ -108,13 +108,20 @@ function MasterSection({ engine, meters }: { engine: MixEngine; meters: Meters |
   const [xf, setXf] = useState(0.5);
   const [master, setMaster] = useState(0.9);
   const [monitor, setMonitor] = useState(0.7);
+  const [cueVol, setCueVol] = useState(1);
   const [outputs, setOutputs] = useState<MediaDeviceInfo[]>([]);
   const [cueMsg, setCueMsg] = useState<string | null>(null);
-  usePresetSlot("master", { crossfade: xf, master, monitor }, (v) => { setXf(v.crossfade); setMaster(v.master); setMonitor(v.monitor); });
-  useConsoleControl(["crossfader", "master"], (a) => {
-    if (a.kind !== "range") return;
-    if (a.target === "crossfader") setXf(a.value); else setMaster(scaleRange("master", a.value));
+  usePresetSlot("master", { crossfade: xf, master, monitor, cueVol }, (v) => {
+    setXf(v.crossfade); setMaster(v.master); setMonitor(v.monitor);
+    if (typeof v.cueVol === "number") setCueVol(v.cueVol);
   });
+  useConsoleControl(["crossfader", "master", "cue"], (a) => {
+    if (a.kind !== "range") return;
+    if (a.target === "crossfader") setXf(a.value);
+    else if (a.target === "cue.volume") setCueVol(scaleRange("cue.volume", a.value));
+    else setMaster(scaleRange("master", a.value));
+  });
+  useEffect(() => { engine.cueBus.gain.value = cueVol; }, [engine, cueVol]);
   useEffect(() => { engine.setCrossfade(xf); }, [engine, xf]);
   useEffect(() => { engine.master.gain.value = master; }, [engine, master]);
   useEffect(() => { engine.monitorBus.gain.value = monitor; }, [engine, monitor]);
@@ -147,6 +154,7 @@ function MasterSection({ engine, meters }: { engine: MixEngine; meters: Meters |
           <option value="">Off</option>
           {outputs.map((o) => <option key={o.deviceId} value={o.deviceId}>{o.label || "Output device"}</option>)}
         </select>
+        <div className="mt-2"><Knob label="Headphone volume" value={cueVol} min={0} max={1.5} onChange={setCueVol} /></div>
         {cueMsg && <p className="mt-1 text-[10px] text-[var(--color-gold)]">{cueMsg}</p>}
         <p className="mt-2 text-[10px] text-[var(--color-muted)]">Monitor & cue never reach listeners. Only the master program bus is transmitted.</p>
       </div>
