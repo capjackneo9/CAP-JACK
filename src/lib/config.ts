@@ -21,6 +21,8 @@ export const config = {
     apiUrl: env("MEDIAMTX_API_URL"),
     path: env("MEDIAMTX_PATH") ?? "live",
     hlsPublicBase: env("NEXT_PUBLIC_LIVE_HLS_BASE") ?? "/live-hls",
+    /** WebRTC (WHEP) signalling base, proxied by Caddy; "off" disables low-delay playback. */
+    webrtcPublicBase: env("NEXT_PUBLIC_LIVE_WEBRTC_BASE") ?? "/live-webrtc",
     rtmpUrl: env("LIVE_RTMP_URL"),
   },
   azuracast: {

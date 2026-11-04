@@ -1,6 +1,6 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { MixEngine, type Meter } from "@/lib/audio/engine";
+import { MixEngine, type Meter, type MicInput } from "@/lib/audio/engine";
 import { ProgramRecorder, Webcaster } from "@/lib/audio/webcaster";
 import { deriveOnAir, ON_AIR_LABEL, type TransportState } from "@/lib/audio/onair";
 import { useBroadcast } from "../useBroadcast";
@@ -166,10 +166,24 @@ function MicChannel({ engine, meter }: { engine: MixEngine; meter?: Meter }) {
   const [reverb, setReverb] = useState(0);
   const [monitor, setMonitor] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [deviceId, setDeviceId] = useState<string>("");
+  const [input, setInput] = useState<MicInput>("both");
+  const [voiceProcessing, setVoiceProcessing] = useState(false);
+  const [channels, setChannels] = useState(0);
+  const [silentFor, setSilentFor] = useState(0);
 
-  usePresetSlot("mic", { gain, ducking, duckLevel, echo, reverb, monitor }, (v) => {
+  usePresetSlot("mic", { gain, ducking, duckLevel, echo, reverb, monitor, input, voiceProcessing }, (v) => {
     setGain(v.gain); setDucking(v.ducking); setDuckLevel(v.duckLevel); setEcho(v.echo); setReverb(v.reverb); setMonitor(v.monitor);
+    if (v.input === "1" || v.input === "2" || v.input === "both") setInput(v.input);
+    if (typeof v.voiceProcessing === "boolean") setVoiceProcessing(v.voiceProcessing);
   });
+
+  // "No signal" helper: the mic is enabled but nothing reaches the meter.
+  useEffect(() => {
+    if (!enabled) { setSilentFor(0); return; }
+    // -1 = signal seen since enabling (stop warning); otherwise count silent meter updates (~60 ms each)
+    setSilentFor((s) => (s < 0 ? s : (meter?.peak ?? 0) > 0.002 ? -1 : s + 1));
+  }, [enabled, meter]);
 
   useConsoleControl(["mic"], (a) => {
     if (a.target === "mic.gain" && a.kind === "range") setGain(scaleRange("mic.gain", a.value));
@@ -187,9 +201,12 @@ function MicChannel({ engine, meter }: { engine: MixEngine; meter?: Meter }) {
   useEffect(() => { engine.setMicOpen(open); }, [engine, open]);
   useEffect(() => { engine.setMicMuted(muted); }, [engine, muted]);
 
-  async function enable(deviceId?: string) {
+  async function enable(id: string = deviceId, opts: { input?: MicInput; voiceProcessing?: boolean } = {}) {
     setErr(null);
-    try { await engine.enableMic(deviceId); setEnabled(true); refreshDevices(); }
+    try {
+      await engine.enableMic(id || undefined, { input: opts.input ?? input, voiceProcessing: opts.voiceProcessing ?? voiceProcessing });
+      setDeviceId(id); setEnabled(true); setChannels(engine.micChannels); setSilentFor(0); refreshDevices();
+    }
     catch (e) { setErr((e as Error).name === "NotAllowedError" ? "Microphone permission was denied." : (e as Error).message); }
   }
 
@@ -207,12 +224,34 @@ function MicChannel({ engine, meter }: { engine: MixEngine; meter?: Meter }) {
       <div className="grid grid-cols-[1fr_auto] gap-4">
         <div className="space-y-3">
           <div className="flex flex-wrap gap-2">
-            <select aria-label="Microphone device" className="field max-w-xs text-xs" onChange={(e) => enable(e.target.value || undefined)} defaultValue="">
+            <select aria-label="Microphone device" className="field max-w-xs text-xs" onChange={(e) => enable(e.target.value)} value={deviceId}>
               <option value="">{enabled ? "Default microphone" : "Select microphone…"}</option>
               {devices.map((d) => <option key={d.deviceId} value={d.deviceId}>{d.label || "Microphone"}</option>)}
             </select>
             {!enabled && <button type="button" className="btn btn-ghost px-3 py-1.5 text-sm" onClick={() => enable()}>Enable mic</button>}
           </div>
+          {enabled && channels >= 2 && (
+            <div className="flex flex-wrap items-center gap-2 text-xs">
+              <span className="label mb-0">Interface input</span>
+              {([["1", "Input 1"], ["2", "Input 2"], ["both", "Both"]] as const).map(([v, l]) => (
+                <button key={v} type="button" aria-pressed={input === v} onClick={() => { setInput(v); enable(deviceId, { input: v }); }}
+                  className={`btn px-2.5 py-1 text-[11px] ${input === v ? "btn-gold" : "btn-ghost"}`}>{l}</button>
+              ))}
+            </div>
+          )}
+          {enabled && (
+            <label className="flex items-center gap-2 text-xs text-[var(--color-muted)]">
+              <input type="checkbox" checked={voiceProcessing} className="accent-[var(--color-gold)]"
+                onChange={(e) => { setVoiceProcessing(e.target.checked); enable(deviceId, { voiceProcessing: e.target.checked }); }} />
+              Noise suppression (only for a laptop mic in a noisy room — leave off for an audio interface; it makes voices choppy)
+            </label>
+          )}
+          {enabled && silentFor > 80 && (
+            <p role="status" className="rounded-lg border border-[var(--color-gold)]/50 bg-[var(--color-gold)]/10 p-2 text-xs">
+              No sound is reaching the mic meter. Check: the right device is selected above (e.g. <strong>Volt 2</strong>); the mic is in the input you picked;
+              the interface&apos;s gain knob is turned up; <strong>48V</strong> is on for a condenser mic; and Windows Settings → Sound → Input shows the level moving.
+            </p>
+          )}
           <div className="flex flex-wrap gap-2">
             <button type="button" aria-pressed={open} disabled={!enabled} onClick={() => setOpen(!open)}
               className={`btn px-5 py-2 text-sm ${open ? "btn-live" : "btn-ghost"}`}>{open ? "MIC ON" : "MIC OFF"}</button>
@@ -227,8 +266,12 @@ function MicChannel({ engine, meter }: { engine: MixEngine; meter?: Meter }) {
           </div>
           <label className="flex items-center gap-2 text-xs text-[var(--color-muted)]">
             <input type="checkbox" checked={monitor} onChange={(e) => setMonitor(e.target.checked)} className="accent-[var(--color-gold)]" />
-            Hear my mic in the local monitor (headphones only — speakers will feed back)
+            Hear my mic in the local monitor while MIC ON (headphones only — speakers will feed back)
           </label>
+          <p className="text-[10px] text-[var(--color-muted)]">
+            Using a Volt 2 or similar interface? For zero-delay mic monitoring turn on its <strong>MONITOR</strong> switch / knob and keep this box off —
+            your headphones then hear the mic directly from the interface.
+          </p>
           {err && <p className="text-xs text-red-300">{err}</p>}
           <p className="text-[10px] text-[var(--color-muted)]">MIC ON places your voice on the program bus. It is heard by listeners only while the transmitter is ON AIR.</p>
         </div>

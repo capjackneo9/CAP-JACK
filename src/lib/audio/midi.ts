@@ -6,14 +6,15 @@
  * moves the matching knob/button. Works with any class-compliant controller
  * (e.g. Numark Party Mix / Party Mix II / Party Mix Live).
  */
-export type TargetKind = "range" | "button" | "jog";
+export type TargetKind = "range" | "button" | "jog" | "touch";
 export interface ControlTarget { id: string; label: string; group: string; kind: TargetKind }
 
 const deckTargets = (d: "A" | "B"): ControlTarget[] => [
   { id: `deck${d}.play`, label: "Play / pause", group: `Deck ${d}`, kind: "button" },
   { id: `deck${d}.cue`, label: "Cue (back to start)", group: `Deck ${d}`, kind: "button" },
   { id: `deck${d}.pfl`, label: "Headphone cue (PFL)", group: `Deck ${d}`, kind: "button" },
-  { id: `deck${d}.jog`, label: "Jog wheel (nudge / scrub)", group: `Deck ${d}`, kind: "jog" },
+  { id: `deck${d}.jog`, label: "Jog wheel (turn)", group: `Deck ${d}`, kind: "jog" },
+  { id: `deck${d}.touch`, label: "Jog wheel top (touch = scratch)", group: `Deck ${d}`, kind: "touch" },
   { id: `deck${d}.fader`, label: "Channel volume", group: `Deck ${d}`, kind: "range" },
   { id: `deck${d}.trim`, label: "Gain / trim", group: `Deck ${d}`, kind: "range" },
   { id: `deck${d}.high`, label: "EQ high", group: `Deck ${d}`, kind: "range" },
@@ -39,10 +40,18 @@ export const TARGET_BY_ID = new Map(CONTROL_TARGETS.map((t) => [t.id, t]));
 /** Key identifying one physical control: note or CC, MIDI channel, number. */
 export type MidiKey = string; // e.g. "n:1:11" (note 11 on ch.1) or "c:1:8" (CC 8 on ch.1)
 
-export interface MidiMessage { key: MidiKey; type: "note" | "cc"; on: boolean; value: number }
+export interface MidiMessage { key: MidiKey; type: "note" | "cc" | "pb"; on: boolean; value: number }
 
+/**
+ * Parse note on/off, control change and pitch bend (some controllers send their
+ * pitch faders as 14-bit pitch bend). Pitch bend is reduced to 0..127.
+ */
 export function parseMidi(data: ArrayLike<number>): MidiMessage | null {
   if (!data || data.length < 3) return null;
+  if ((data[0] & 0xf0) === 0xe0) {
+    const v14 = (data[2] << 7) | data[1];
+    return { key: `p:${(data[0] & 0x0f) + 1}:0`, type: "pb", on: true, value: Math.round((v14 / 16383) * 127) };
+  }
   const status = data[0] & 0xf0;
   const ch = (data[0] & 0x0f) + 1;
   const num = data[1];
@@ -56,26 +65,42 @@ export function parseMidi(data: ArrayLike<number>): MidiMessage | null {
 export type ControlAction =
   | { target: string; kind: "range"; value: number }  // 0..1
   | { target: string; kind: "button" }                // a press
-  | { target: string; kind: "jog"; delta: number };   // signed ticks
+  | { target: string; kind: "jog"; delta: number }    // signed ticks
+  | { target: string; kind: "touch"; down: boolean }; // jog-wheel top touched / released
 
 /** Turn a MIDI message into a console action using the learned mapping. */
 export function interpret(msg: MidiMessage, mapping: Record<MidiKey, string>): ControlAction | null {
   const target = mapping[msg.key];
   const t = target ? TARGET_BY_ID.get(target) : undefined;
   if (!t) return null;
-  if (t.kind === "range") return msg.type === "cc" ? { target: t.id, kind: "range", value: msg.value / 127 } : null;
+  if (t.kind === "range") return msg.type !== "note" ? { target: t.id, kind: "range", value: msg.value / 127 } : null;
   if (t.kind === "button") return msg.on ? { target: t.id, kind: "button" } : null;
-  // jog: relative CC (1..63 forward, 65..127 backward); notes (touch) are ignored
+  if (t.kind === "touch") return { target: t.id, kind: "touch", down: msg.on };
+  // jog: relative CC (1..63 forward, 65..127 backward)
   if (msg.type !== "cc" || msg.value === 64 || msg.value === 0) return null;
   return { target: t.id, kind: "jog", delta: msg.value < 64 ? msg.value : msg.value - 128 };
+}
+
+/** Why a message could not be learned for a target (shown while listening), or null if it fits. */
+export function learnMismatch(msg: MidiMessage, target: string): string | null {
+  const t = TARGET_BY_ID.get(target);
+  if (!t) return "Unknown control";
+  if (msg.type === "note" && !msg.on) return null; // button release — ignored quietly
+  if ((t.kind === "range" || t.kind === "jog") && msg.type === "note")
+    return t.kind === "jog"
+      ? "That was the wheel's touch-sensitive top (a button message). Turn the jog wheel by its outer edge instead — or map it to “Jog wheel top (touch = scratch)”."
+      : "That control sent a button message. Turn the knob or slide the fader instead.";
+  if (t.kind === "jog" && msg.type === "pb") return "That was a pitch fader. Turn the jog wheel instead.";
+  if (t.kind === "touch" && msg.type !== "note") return "That was a knob/wheel turn. Rest your hand on top of the jog wheel without turning it.";
+  return null;
 }
 
 /** Learn: assign the incoming control to a target (one control per target). */
 export function learn(mapping: Record<MidiKey, string>, msg: MidiMessage, target: string): Record<MidiKey, string> {
   const t = TARGET_BY_ID.get(target);
   if (!t) return mapping;
-  if (t.kind !== "button" && msg.type !== "cc") return mapping; // knobs/faders/jogs must be CCs
   if (msg.type === "note" && !msg.on) return mapping;
+  if (learnMismatch(msg, target)) return mapping;
   const next = Object.fromEntries(Object.entries(mapping).filter(([, v]) => v !== target));
   next[msg.key] = target;
   return next;
@@ -94,5 +119,6 @@ export function scaleRange(target: string, v: number): number {
 
 export function describeKey(key: MidiKey): string {
   const [t, ch, n] = key.split(":");
+  if (t === "p") return `Pitch bend · ch ${ch}`;
   return `${t === "n" ? "Button/note" : "Knob/CC"} ${n} · ch ${ch}`;
 }

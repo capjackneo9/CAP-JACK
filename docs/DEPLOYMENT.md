@@ -98,7 +98,7 @@ Run in the **Web console**:
 
 **1. Create the config with a random live password (save the password it prints):**
 ```bash
-cd /opt/ncvr && git pull && cp deploy/mediamtx.yml.example deploy/mediamtx.yml && LIVEPASS=$(openssl rand -hex 12) && sed -i "s/CHANGE_ME_LIVE_PASSWORD/$LIVEPASS/" deploy/mediamtx.yml && echo "OBS live password: $LIVEPASS"
+cd /opt/ncvr && git pull && cp deploy/mediamtx.yml.example deploy/mediamtx.yml && LIVEPASS=$(openssl rand -hex 12) && sed -i "s/CHANGE_ME_LIVE_PASSWORD/$LIVEPASS/;s/CHANGE_ME_PUBLIC_IP/$(curl -4 -fsS https://api.ipify.org)/" deploy/mediamtx.yml && echo "OBS live password: $LIVEPASS"
 ```
 **2. Tell NCVR about it and keep it running on every update:**
 ```bash
@@ -110,7 +110,7 @@ cd /opt/ncvr && sed -i '/^MEDIAMTX_API_URL=/d;/^LIVE_RTMP_URL=/d;/^COMPOSE_PROFI
 ```bash
 cp /opt/ncvr/deploy/Caddyfile /etc/caddy/Caddyfile && systemctl reload caddy && systemctl status caddy --no-pager | head -3
 ```
-**4. Open the live port:** if `ufw status` says *active*, run `ufw allow 1935/tcp`. Also allow TCP 1935 in hPanel → VPS → Firewall if you add firewall rules there.
+**4. Open the live ports:** if `ufw status` says *active*, run `ufw allow 1935/tcp && ufw allow 8189/udp && ufw allow 8189/tcp`. Also allow TCP 1935 and UDP+TCP 8189 in hPanel → VPS → Firewall if you add firewall rules there.
 
 **OBS:** Settings → Stream → Service *Custom*
 - **Server:** `rtmp://stream.nitecapviberadio.tech:1935`
@@ -118,10 +118,14 @@ cp /opt/ncvr/deploy/Caddyfile /etc/caddy/Caddyfile && systemctl reload caddy && 
 
 Recommended output: 1280×720 (or 1080p), 30 fps, x264, 2500–4500 kbps, **B-frames off** (x264 profile *baseline* or `bframes=0`), **keyframe interval 1 s**, AAC 160 kbps.
 
-**Lower delay (low-latency HLS, ~2–4 s):** if your `deploy/mediamtx.yml` was created before this option existed, switch it on:
+**Lowest delay (WebRTC, under 1 s):** NCVR TV plays the live feed over WebRTC when it can, and falls back to
+low-latency HLS (~2–4 s). If your `deploy/mediamtx.yml` was made before this existed, refresh it (your live password is kept):
 ```bash
-cd /opt/ncvr && sed -i 's/^hlsVariant: mpegts$/hlsVariant: lowLatency\nhlsSegmentDuration: 1s\nhlsPartDuration: 200ms\nhlsSegmentCount: 7\nhlsAlwaysRemux: yes/' deploy/mediamtx.yml && docker compose restart mediamtx
+cd /opt/ncvr && git pull && sh scripts/update-mediamtx.sh && (ufw status | grep -q active && ufw allow 8189/udp && ufw allow 8189/tcp; true) && docker compose up -d && cp deploy/Caddyfile /etc/caddy/Caddyfile && systemctl reload caddy
 ```
+Check it: while you're live, `docker compose exec app node -e "fetch('http://mediamtx:9997/v3/paths/list').then(r=>r.text()).then(t=>console.log(t.match(/\"name\":\"[^\"]*\"/g)))"` lists both `live` and `live-rtc`.
+If only `live` appears, run `docker compose logs --tail=30 mediamtx`.
+
 NCVR TV switches to the live feed within ~20 s and returns to the schedule when you stop.
 
 ## 6. Go-live checklist

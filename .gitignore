@@ -12,3 +12,4 @@ recordings/
 .DS_Store
 npm-debug.log*
 deploy/mediamtx.yml
+deploy/mediamtx.yml.bak

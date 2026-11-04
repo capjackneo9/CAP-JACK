@@ -1,5 +1,5 @@
 # MediaMTX config for NCVR TV live video.
-# Copy to deploy/mediamtx.yml and replace CHANGE_ME_LIVE_PASSWORD (see docs/DEPLOYMENT.md → NCVR TV).
+# Copy to deploy/mediamtx.yml and fill in the CHANGE_ME values — or run scripts/update-mediamtx.sh (docs/DEPLOYMENT.md → 5b).
 logLevel: info
 
 api: yes
@@ -16,8 +16,18 @@ hlsPartDuration: 200ms
 hlsSegmentCount: 7
 hlsAlwaysRemux: yes
 hlsAllowOrigin: '*'
-rtsp: no
-webrtc: no
+# RTSP stays inside the container: it only feeds the Opus audio converter below.
+rtsp: yes
+rtspAddress: :8554
+# WebRTC (WHEP) playback: under 1 s of delay. Browsers need Opus audio, so the
+# "live" path is copied to "live-rtc" with AAC → Opus (video is not re-encoded).
+webrtc: yes
+webrtcAddress: :8889
+webrtcAllowOrigin: '*'
+webrtcLocalUDPAddress: :8189
+webrtcLocalTCPAddress: :8189
+# Public IP of the VPS so viewers' browsers can reach the media port.
+webrtcAdditionalHosts: [CHANGE_ME_PUBLIC_IP]
 srt: no
 
 authMethod: internal
@@ -36,6 +46,13 @@ authInternalUsers:
     permissions:
       - action: publish
         path: live
+  # The Opus converter inside the container republishes the feed.
+  - user: any
+    pass:
+    ips: ['127.0.0.1', '::1']
+    permissions:
+      - action: publish
+        path: live-rtc
   # The NCVR app checks live status over the private Docker network.
   - user: any
     pass:
@@ -45,3 +62,10 @@ authInternalUsers:
 
 paths:
   live:
+    # Copy the feed for WebRTC viewers: video as-is, audio AAC → Opus.
+    runOnReady: >-
+      ffmpeg -hide_banner -loglevel error -rtsp_transport tcp -i rtsp://127.0.0.1:8554/live
+      -map 0:v -map 0:a? -c:v copy -c:a libopus -b:a 160k -ar 48000 -ac 2
+      -f rtsp -rtsp_transport tcp rtsp://127.0.0.1:8554/live-rtc
+    runOnReadyRestart: yes
+  live-rtc:

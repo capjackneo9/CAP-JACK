@@ -13,6 +13,9 @@ import type { TransportState } from "./onair";
  * Verify against your AzuraCast version on staging before going live; if the
  * handshake differs, use the AzuraCast Web DJ fallback in the console.
  */
+/** MediaRecorder chunk size for the live webcast. */
+export const WEBCAST_TIMESLICE_MS = 100;
+
 export class Webcaster {
   private ws: WebSocket | null = null;
   private rec: MediaRecorder | null = null;
@@ -51,13 +54,16 @@ export class Webcaster {
       ws.send(JSON.stringify({ type: "hello", data: { mime, user, password } }));
       const rec = new MediaRecorder(stream, { mimeType: mime, audioBitsPerSecond: bitrate });
       this.rec = rec;
-      rec.ondataavailable = async (e) => {
+      // Blobs are sent as-is so chunks always leave in order.
+      rec.ondataavailable = (e) => {
         if (e.data.size && ws.readyState === WebSocket.OPEN) {
-          ws.send(await e.data.arrayBuffer());
+          ws.send(e.data);
           this.bytesSent += e.data.size;
         }
       };
-      rec.start(1000);
+      // Small, steady chunks (like AzuraCast's own Web DJ) keep the station's DJ buffer
+      // evenly fed — 1-second bursts caused audible choppiness for listeners.
+      rec.start(WEBCAST_TIMESLICE_MS);
       // Liquidsoap closes the socket on rejected credentials; surviving this window means accepted.
       this.confirmTimer = setTimeout(() => { if (ws.readyState === WebSocket.OPEN) this.set("streaming"); }, 2500);
     };

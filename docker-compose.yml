@@ -48,13 +48,17 @@ services:
 
   # Optional: NCVR TV live video (OBS → RTMP in, HLS out). Enable with: docker compose --profile tv up -d
   mediamtx:
-    image: bluenviron/mediamtx:1.9.3
+    # -ffmpeg variant: converts the live audio to Opus for low-delay WebRTC viewers
+    image: bluenviron/mediamtx:1.9.3-ffmpeg
     profiles: [tv]
     restart: unless-stopped
     volumes: [./deploy/mediamtx.yml:/mediamtx.yml:ro]
     ports:
       - "1935:1935"            # RTMP ingest from OBS (public)
       - "127.0.0.1:8888:8888"  # HLS playback, served to viewers through Caddy at /live-hls/
+      - "127.0.0.1:8889:8889"  # WebRTC (WHEP) signalling, served through Caddy at /live-webrtc/
+      - "8189:8189/udp"        # WebRTC media (public)
+      - "8189:8189/tcp"        # WebRTC media over TCP fallback (public)
 
   # Optional: WebRTC media server for remote guests. Enable with: docker compose --profile guests up -d
   livekit:

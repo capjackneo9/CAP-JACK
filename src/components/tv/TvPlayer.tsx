@@ -1,6 +1,7 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { usePlayer } from "../player/PlayerProvider";
+import { playWhep } from "@/lib/tv/whep";
 
 type Item =
   | { type: "video"; id: string; title: string; artist: string; src: string; durationSec: number; feature?: boolean }
@@ -9,7 +10,7 @@ type Item =
 type Block = { title: string; kind: string; label: string } | null;
 type Look = { bugSrc: string; position: "top-left" | "top-right" | "bottom-left" | "bottom-right"; size: "sm" | "md" | "lg"; opacity: number };
 type Now =
-  | { mode: "live"; hlsUrl: string; serverTime: number; look?: Look }
+  | { mode: "live"; hlsUrl: string; webrtcUrl?: string | null; serverTime: number; look?: Look }
   | { mode: "rotation"; serverTime: number; item: Item; offsetSec: number; remainingSec: number; breakRemainingSec?: number; next: Array<{ title: string; artist: string }>; block: Block; look?: Look }
   | { mode: "off"; reason: string; block?: Block; look?: Look }
   | { mode: "soon"; serverTime: number; look?: Look; soon: { title: string; logo: string | null; when: string } };
@@ -86,9 +87,11 @@ export function TvPlayer({ bugSrc = "/brand/ncvr-emblem.webp", previewId }: { bu
       try {
         const r = await fetch("/api/tv/now", { cache: "no-store" });
         const j = (await r.json()) as Now;
-        setNow((cur) => ((cur?.mode === "live") !== (j.mode === "live") ? (setFetchedAt(performance.now()), j) : cur));
+        // Switch when live starts/stops, or when the low-delay (WebRTC) copy becomes available.
+        const upgrade = (cur: Now | null) => cur?.mode === "live" && j.mode === "live" && !cur.webrtcUrl && !!j.webrtcUrl;
+        setNow((cur) => ((cur?.mode === "live") !== (j.mode === "live") || upgrade(cur) ? (setFetchedAt(performance.now()), j) : cur));
       } catch { /* keep playing */ }
-    }, 20000);
+    }, 10000);
     return () => clearInterval(id);
   }, []);
 
@@ -97,6 +100,7 @@ export function TvPlayer({ bugSrc = "/brand/ncvr-emblem.webp", previewId }: { bu
     if (!el || !now) return;
     hls.current?.destroy();
     hls.current = null;
+    if (el.srcObject) el.srcObject = null;
     if (cardTimer.current) clearTimeout(cardTimer.current);
 
     if (now.mode === "rotation" && now.item.type === "card") {
@@ -120,20 +124,42 @@ export function TvPlayer({ bugSrc = "/brand/ncvr-emblem.webp", previewId }: { bu
       return () => el.removeEventListener("loadedmetadata", sync);
     }
     if (now.mode === "live") {
-      if (el.canPlayType("application/vnd.apple.mpegurl")) {
-        el.src = now.hlsUrl;
-        el.play().catch(() => null);
-      } else {
+      let cancelled = false;
+      const startHls = () => {
+        if (cancelled) return;
+        el.srcObject = null;
+        if (el.canPlayType("application/vnd.apple.mpegurl")) {
+          el.src = now.hlsUrl;
+          el.play().catch(() => null);
+          return;
+        }
         import("hls.js").then(({ default: Hls }) => {
+          if (cancelled) return;
           if (!Hls.isSupported()) { setErr("This browser cannot play the live feed."); return; }
-          const h = new Hls({ lowLatencyMode: true, liveSyncDurationCount: 2, liveMaxLatencyDurationCount: 5, backBufferLength: 30 });
+          // Stay as close to the live edge as low-latency HLS allows.
+          const h = new Hls({ lowLatencyMode: true, liveSyncDuration: 1.5, liveMaxLatencyDuration: 4, maxLiveSyncPlaybackRate: 1.15, backBufferLength: 10 });
           h.loadSource(now.hlsUrl);
           h.attachMedia(el);
           h.on(Hls.Events.ERROR, (_e, data) => { if (data.fatal) { setErr("Live feed interrupted — reconnecting…"); setTimeout(load, 4000); } });
           hls.current = h;
           el.play().catch(() => null);
         });
+      };
+      if (now.webrtcUrl && typeof RTCPeerConnection !== "undefined") {
+        // WebRTC: under a second behind the studio. Falls back to HLS if it can't connect.
+        el.removeAttribute("src");
+        playWhep(now.webrtcUrl, el, { onDrop: () => { if (!cancelled) { setErr("Live feed interrupted — reconnecting…"); setTimeout(load, 3000); } } })
+          .then((session) => {
+            if (cancelled) { session.close(); return; }
+            hls.current = { destroy: () => { session.close(); el.srcObject = null; } };
+            setErr(null);
+            el.play().catch(() => null);
+          })
+          .catch(startHls);
+      } else {
+        startHls();
       }
+      return () => { cancelled = true; };
     }
     if (now.mode === "off" || now.mode === "soon") { el.pause(); el.removeAttribute("src"); el.load(); }
   }, [now, fetchedAt, load]);

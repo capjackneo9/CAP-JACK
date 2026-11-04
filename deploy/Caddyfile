@@ -9,6 +9,10 @@ nitecapviberadio.tech {
 	handle_path /live-hls/* {
 		reverse_proxy 127.0.0.1:8888
 	}
+	# NCVR TV live video, low delay (MediaMTX WebRTC / WHEP)
+	handle_path /live-webrtc/* {
+		reverse_proxy 127.0.0.1:8889
+	}
 	handle {
 		reverse_proxy 127.0.0.1:3000
 	}
@@ -24,6 +28,10 @@ studio.nitecapviberadio.tech {
 	# NCVR TV live video (MediaMTX HLS)
 	handle_path /live-hls/* {
 		reverse_proxy 127.0.0.1:8888
+	}
+	# NCVR TV live video, low delay (MediaMTX WebRTC / WHEP)
+	handle_path /live-webrtc/* {
+		reverse_proxy 127.0.0.1:8889
 	}
 	handle {
 		reverse_proxy 127.0.0.1:3000

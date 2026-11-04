@@ -1,4 +1,5 @@
 "use client";
+import { SCRATCH_WORKLET, clampPosition } from "./scratch";
 /**
  * NCVR browser mixing engine (Web Audio API).
  *
@@ -59,7 +60,14 @@ export class Deck {
   peaks: Float32Array | null = null;
   title = ""; artist = "";
   private objectUrl: string | null = null;
-  constructor(private ctx: AudioContext, public id: DeckId, musicBus: AudioNode, cueBus: AudioNode) {
+  /** Scratch voice (AudioWorklet) — null until the worklet loads, or if the browser lacks AudioWorklet. */
+  scratchNode: AudioWorkletNode | null = null;
+  scratchReady = false;
+  scratching = false;
+  private scratchSec = 0;
+  private bufferRate = 44100;
+  private resumeAfterScratch = false;
+  constructor(private ctx: AudioContext, public id: DeckId, musicBus: AudioNode, cueBus: AudioNode, private worklet: Promise<boolean> = Promise.resolve(false)) {
     this.el = new Audio();
     this.el.crossOrigin = "use-credentials";
     this.el.preload = "auto";
@@ -74,11 +82,19 @@ export class Deck {
     this.eq.output.connect(this.fader).connect(this.xf).connect(musicBus);
     this.eq.output.connect(this.analyser);
     this.eq.output.connect(this.cue).connect(cueBus); // pre-fader listen
+    this.worklet.then((ok) => {
+      if (!ok) return;
+      this.scratchNode = new AudioWorkletNode(ctx, "ncvr-scratch", { numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [2] });
+      this.scratchNode.connect(this.trim);
+    }).catch(() => null);
   }
   async load(source: File | string, meta: { title: string; artist?: string }) {
     if (this.objectUrl) URL.revokeObjectURL(this.objectUrl);
     this.objectUrl = null;
     this.peaks = null;
+    if (this.scratching) this.endScratch();
+    this.scratchReady = false;
+    this.scratchNode?.port.postMessage({ type: "unload" });
     const url = typeof source === "string" ? source : (this.objectUrl = URL.createObjectURL(source));
     this.el.src = url;
     this.title = meta.title; this.artist = meta.artist ?? "";
@@ -87,11 +103,45 @@ export class Deck {
       const data = typeof source === "string" ? await (await fetch(source, { credentials: "include" })).arrayBuffer() : await source.arrayBuffer();
       const buf = await this.ctx.decodeAudioData(data);
       this.peaks = computePeaks(buf, 800);
+      await this.worklet;
+      if (this.scratchNode) {
+        const channels = Array.from({ length: Math.min(2, buf.numberOfChannels) }, (_, i) => buf.getChannelData(i).slice());
+        this.bufferRate = buf.sampleRate;
+        this.scratchNode.port.postMessage({ type: "load", channels, sampleRate: buf.sampleRate }, channels.map((c) => c.buffer));
+        this.scratchReady = true;
+      }
     } catch { this.peaks = null; }
   }
+  /** Platter touched: hold the record. Returns false when scratch audio is unavailable (fall back to nudge). */
+  beginScratch(): boolean {
+    if (!this.scratchNode || !this.scratchReady) return false;
+    if (this.scratching) return true;
+    this.resumeAfterScratch = this.playing;
+    this.scratchSec = this.el.currentTime;
+    this.el.pause();
+    this.scratchNode.port.postMessage({ type: "start", pos: this.scratchSec, bufferRate: this.bufferRate });
+    this.scratching = true;
+    return true;
+  }
+  /** Move the record by `seconds` (negative = backwards). */
+  scratchBy(seconds: number) {
+    if (!this.scratching || !this.scratchNode) return;
+    this.scratchSec = clampPosition(this.scratchSec + seconds, this.el.duration);
+    this.scratchNode.port.postMessage({ type: "target", pos: this.scratchSec, bufferRate: this.bufferRate });
+  }
+  /** Platter released: playback continues from where the record was left. */
+  endScratch() {
+    if (!this.scratching) return;
+    this.scratching = false;
+    this.scratchNode?.port.postMessage({ type: "stop" });
+    this.el.currentTime = this.scratchSec;
+    if (this.resumeAfterScratch) this.el.play().catch(() => null);
+  }
+  /** Current position, including while scratching (the element is paused then). */
+  get position() { return this.scratching ? this.scratchSec : this.el.currentTime; }
   play() { return this.el.play(); }
   pause() { this.el.pause(); }
-  get playing() { return !this.el.paused && !this.el.ended; }
+  get playing() { return this.scratching ? this.resumeAfterScratch : !this.el.paused && !this.el.ended; }
 }
 
 export function computePeaks(buf: AudioBuffer, buckets: number): Float32Array {
@@ -105,6 +155,8 @@ export function computePeaks(buf: AudioBuffer, buckets: number): Float32Array {
   }
   return out;
 }
+
+export type MicInput = "1" | "2" | "both";
 
 export interface GuestChannel { id: string; name: string; source: MediaStreamAudioSourceNode; gain: GainNode; gate: GainNode; analyser: AnalyserNode; onAir: boolean; consent: boolean }
 
@@ -128,7 +180,12 @@ export class MixEngine {
   private cueEl: HTMLAudioElement | null = null;
 
   constructor() {
-    const ctx = (this.ctx = new AudioContext({ latencyHint: "interactive" }));
+    // "balanced" gives the audio thread a bigger buffer than "interactive": no crackle/dropouts
+    // while the console UI is busy, at the cost of a few ms of local monitor latency.
+    const ctx = (this.ctx = new AudioContext({ latencyHint: "balanced" }));
+    const worklet: Promise<boolean> = ctx.audioWorklet
+      ? ctx.audioWorklet.addModule(URL.createObjectURL(new Blob([SCRATCH_WORKLET], { type: "text/javascript" }))).then(() => true, () => false)
+      : Promise.resolve(false);
     this.musicBus = new GainNode(ctx, { gain: 1 });
     this.padBus = new GainNode(ctx, { gain: 0.9 });
     this.programBus = new GainNode(ctx);
@@ -154,7 +211,7 @@ export class MixEngine {
     this.monitorBus.connect(ctx.destination);
     this.cueBus.connect(this.cueOut);
 
-    this.decks = { A: new Deck(ctx, "A", this.musicBus, this.cueBus), B: new Deck(ctx, "B", this.musicBus, this.cueBus) };
+    this.decks = { A: new Deck(ctx, "A", this.musicBus, this.cueBus, worklet), B: new Deck(ctx, "B", this.musicBus, this.cueBus, worklet) };
     this.setCrossfade(0.5);
 
     // Mic chain (source attached in enableMic)
@@ -188,15 +245,45 @@ export class MixEngine {
     this.decks.B.xf.gain.setTargetAtTime(Math.sin(this.crossfade * Math.PI / 2), t, 0.01);
   }
 
-  async enableMic(deviceId?: string) {
+  /**
+   * Open a microphone / audio interface. `input` picks the interface channel:
+   * 1 = left / input 1, 2 = right / input 2, "both" = sum (e.g. UA Volt 2 with
+   * the mic in either jack). `voiceProcessing` turns on the browser's noise
+   * suppression / echo cancellation — off by default because it chops music
+   * and makes good mics sound underwater.
+   */
+  async enableMic(deviceId?: string, opts: { input?: MicInput; voiceProcessing?: boolean } = {}) {
+    const input = opts.input ?? "both";
+    const vp = opts.voiceProcessing ?? false;
     this.micStream?.getTracks().forEach((t) => t.stop());
     this.micStream = await navigator.mediaDevices.getUserMedia({
-      audio: { deviceId: deviceId ? { exact: deviceId } : undefined, echoCancellation: false, noiseSuppression: true, autoGainControl: false, channelCount: 1 },
+      audio: {
+        deviceId: deviceId ? { exact: deviceId } : undefined,
+        echoCancellation: vp, noiseSuppression: vp, autoGainControl: false,
+        channelCount: { ideal: 2 },
+      },
     });
     this.micSource?.disconnect();
+    this.micPick?.disconnect();
     this.micSource = this.ctx.createMediaStreamSource(this.micStream);
-    this.micSource.connect(this.micGain);
+    const channels = this.micStream.getAudioTracks()[0]?.getSettings().channelCount ?? 1;
+    this.micChannels = channels;
+    if (channels < 2) {
+      this.micPick = null;
+      this.micSource.connect(this.micGain);
+      return;
+    }
+    // Pick the interface input → mono voice
+    const split = this.ctx.createChannelSplitter(2);
+    const sum = new GainNode(this.ctx, { channelCount: 1, channelCountMode: "explicit", channelInterpretation: "speakers" });
+    this.micSource.connect(split);
+    if (input === "1" || input === "both") split.connect(sum, 0);
+    if (input === "2" || input === "both") split.connect(sum, 1);
+    sum.connect(this.micGain);
+    this.micPick = split;
   }
+  micPick: AudioNode | null = null;
+  micChannels = 0;
 
   setMicOpen(open: boolean) { this.micOpen = open; this.applyMic(); }
   setMicMuted(m: boolean) { this.micMuted = m; this.applyMic(); }

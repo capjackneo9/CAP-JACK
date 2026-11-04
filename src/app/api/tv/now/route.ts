@@ -37,7 +37,7 @@ export async function GET(req: Request) {
   }
   const live = await liveVideoStatus();
   if (live.live && live.hlsUrl) {
-    return NextResponse.json({ mode: "live", hlsUrl: live.hlsUrl, serverTime: now, look: resolveLook(station, null) }, noStore);
+    return NextResponse.json({ mode: "live", hlsUrl: live.hlsUrl, webrtcUrl: live.webrtcUrl, serverTime: now, look: resolveLook(station, null) }, noStore);
   }
   try {
     const tz = station?.timezone ?? config.timezone;
