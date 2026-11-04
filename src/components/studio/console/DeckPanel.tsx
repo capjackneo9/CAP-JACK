@@ -50,28 +50,28 @@ export function DeckPanel({ deck, meter, library, label, sub, onLoaded }: { deck
   useEffect(() => { if (deck) deck.cue.gain.value = cue ? 1 : 0; }, [deck, cue]);
   useEffect(() => {
     if (!deck) return;
-    deck.el.preservesPitch = false; // vinyl-style: tempo and pitch move together
-    if (Math.abs(deck.el.playbackRate - (1 + pitch)) > 0.0001) deck.el.playbackRate = 1 + pitch;
+    deck.setRate(1 + pitch); // vinyl-style: tempo and pitch move together
   }, [deck, pitch]);
 
-  const el = deck?.el;
   const pos = deck?.position ?? 0;
-  const progress = el && el.duration ? pos / el.duration : 0;
+  const duration = deck?.duration ?? 0;
+  const progress = duration ? pos / duration : 0;
+  const loaded = !!deck?.hasTrack;
 
   /** Pitch-bend nudge while playing (speeds up / slows down briefly, no skipping). */
   function nudge(delta: number) {
-    if (!deck?.el.duration) return;
+    if (!deck?.duration) return;
     if (!deck.playing) {
-      deck.el.currentTime = Math.min(Math.max(0, deck.el.currentTime + delta * NUDGE_SECONDS_PER_TICK.paused), deck.el.duration - 0.05);
+      deck.seek(deck.position + delta * NUDGE_SECONDS_PER_TICK.paused);
       return;
     }
-    deck.el.playbackRate = Math.min(1.25, Math.max(0.75, 1 + pitch + delta * 0.03));
+    deck.setRate(Math.min(1.25, Math.max(0.75, 1 + pitch + delta * 0.03)));
     if (bendTimer.current) clearTimeout(bendTimer.current);
-    bendTimer.current = setTimeout(() => { deck.el.playbackRate = 1 + pitch; }, 120);
+    bendTimer.current = setTimeout(() => { deck.setRate(1 + pitch); }, 120);
   }
 
   function jog(delta: number) {
-    if (!deck?.el.duration) return;
+    if (!deck?.duration) return;
     // Ignore stray ticks while the record is playing and not being held (stops jitter stutter).
     const now = performance.now();
     jogTicks.current = [...jogTicks.current.filter((r) => now - r.t <= 300), { t: now, d: delta }];
@@ -109,9 +109,9 @@ export function DeckPanel({ deck, meter, library, label, sub, onLoaded }: { deck
     } else if (a.kind === "range" && ["trim", "filter", "low", "mid", "high", "fader"].includes(param)) {
       setEq((prev) => ({ ...prev, [param]: scaleRange(a.target, a.value) }));
     } else if (a.kind === "button" && param === "play") {
-      if (deck.el.src) { if (deck.playing) deck.pause(); else deck.play().catch((e) => setErr(e.message)); }
+      if (deck.hasTrack) { if (deck.playing) deck.pause(); else deck.play().catch((e) => setErr(e.message)); }
     } else if (a.kind === "button" && param === "cue") {
-      deck.pause(); deck.el.currentTime = 0;
+      deck.pause(); deck.seek(0);
     } else if (a.kind === "button" && param === "pfl") {
       setCue((c) => !c);
     } else if (a.kind === "jog") {
@@ -139,8 +139,8 @@ export function DeckPanel({ deck, meter, library, label, sub, onLoaded }: { deck
       </header>
       <div className="truncate text-sm font-semibold">{deck?.title || "No track loaded"}</div>
       <div className="truncate text-xs text-[var(--color-muted)]">{deck?.artist}</div>
-      <div className="mt-2"><Waveform peaks={deck?.peaks ?? null} progress={progress} onSeek={(p) => { if (el?.duration) el.currentTime = p * el.duration; }} /></div>
-      <div className="mt-1 flex justify-between font-mono text-xs text-[var(--color-muted)]"><span>{fmtTime(pos)}</span><span>-{fmtTime((el?.duration ?? 0) - pos)}</span></div>
+      <div className="mt-2"><Waveform peaks={deck?.peaks ?? null} progress={progress} onSeek={(p) => { if (duration) deck?.seek(p * duration); }} /></div>
+      <div className="mt-1 flex justify-between font-mono text-xs text-[var(--color-muted)]"><span>{fmtTime(pos)}</span><span>-{fmtTime(duration - pos)}</span></div>
       <div className="mt-3 flex items-center gap-3">
         <Platter deck={deck} enabled={jogMode === "scratch"} />
         <div className="space-y-1 text-xs">
@@ -164,9 +164,9 @@ export function DeckPanel({ deck, meter, library, label, sub, onLoaded }: { deck
         </div>
       </div>
       <div className="mt-3 flex flex-wrap items-center gap-2">
-        <button type="button" className="btn btn-primary px-4 py-1.5 text-sm" disabled={disabled || !el?.src}
+        <button type="button" className="btn btn-primary px-4 py-1.5 text-sm" disabled={disabled || !loaded}
           onClick={() => (deck!.playing ? deck!.pause() : deck!.play().catch((e) => setErr(e.message)))}>{deck?.playing ? "Pause" : "Play"}</button>
-        <button type="button" className="btn btn-ghost px-3 py-1.5 text-sm" disabled={disabled || !el?.src} onClick={() => { if (el) { el.pause(); el.currentTime = 0; } }}>Cue to start</button>
+        <button type="button" className="btn btn-ghost px-3 py-1.5 text-sm" disabled={disabled || !loaded} onClick={() => { deck?.pause(); deck?.seek(0); }}>Cue to start</button>
         <button type="button" aria-pressed={cue} className={`btn px-3 py-1.5 text-sm ${cue ? "btn-gold" : "btn-ghost"}`} disabled={disabled} onClick={() => setCue(!cue)}>PFL / Cue</button>
       </div>
       <div className="mt-3 grid grid-cols-[1fr_auto] gap-3">
@@ -233,7 +233,7 @@ function Platter({ deck, enabled }: { deck: Deck | null; enabled: boolean }) {
       aria-label={`Deck ${deck?.id ?? ""} record — drag to scratch`}
       aria-valuenow={Math.round(deck?.position ?? 0)}
       aria-valuemin={0}
-      aria-valuemax={Math.round(deck?.el.duration || 0)}
+      aria-valuemax={Math.round(deck?.duration || 0)}
       tabIndex={usable ? 0 : -1}
       onPointerDown={(e) => {
         if (!usable || !deck?.beginScratch()) return;

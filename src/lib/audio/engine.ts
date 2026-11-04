@@ -53,6 +53,11 @@ export class EQ3 {
   }
 }
 
+/**
+ * One deck. While a track is loading it streams through an <audio> element;
+ * once decoded it plays from memory in the deck voice (AudioWorklet), so
+ * network or disk hiccups can't make it stutter. The same voice scratches.
+ */
 export class Deck {
   el: HTMLAudioElement;
   src: MediaElementAudioSourceNode;
@@ -60,17 +65,25 @@ export class Deck {
   peaks: Float32Array | null = null;
   title = ""; artist = "";
   private objectUrl: string | null = null;
-  /** Scratch voice (AudioWorklet) — null until the worklet loads, or if the browser lacks AudioWorklet. */
+  /** Deck voice (AudioWorklet) — null if the browser lacks AudioWorklet. */
   scratchNode: AudioWorkletNode | null = null;
+  /** Track decoded into the deck voice: plays from memory, scratch available. */
   scratchReady = false;
   scratching = false;
   private scratchSec = 0;
-  private bufferRate = 44100;
   private resumeAfterScratch = false;
+  private memDuration = 0;
+  private memPlaying = false;
+  private memPos = 0;      // seconds, as of memT
+  private memT = 0;        // AudioContext time of memPos
+  private seq = 0;         // command counter — position reports older than the last command are ignored
+  private loadId = 0;
+  private rate = 1;
   constructor(private ctx: AudioContext, public id: DeckId, musicBus: AudioNode, cueBus: AudioNode, private worklet: Promise<boolean> = Promise.resolve(false)) {
     this.el = new Audio();
     this.el.crossOrigin = "use-credentials";
     this.el.preload = "auto";
+    this.el.preservesPitch = false;
     this.src = ctx.createMediaElementSource(this.el);
     this.trim = new GainNode(ctx, { gain: 1 });
     this.eq = new EQ3(ctx);
@@ -84,64 +97,125 @@ export class Deck {
     this.eq.output.connect(this.cue).connect(cueBus); // pre-fader listen
     this.worklet.then((ok) => {
       if (!ok) return;
-      this.scratchNode = new AudioWorkletNode(ctx, "ncvr-scratch", { numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [2] });
-      this.scratchNode.connect(this.trim);
+      const node = new AudioWorkletNode(ctx, "ncvr-scratch", { numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [2] });
+      node.connect(this.trim);
+      node.port.onmessage = (e) => {
+        const m = e.data as { type: string; pos?: number; t?: number; seq: number; playing?: boolean };
+        if (m.seq !== this.seq) return;
+        if (m.type === "ended") { this.memPlaying = false; this.memPos = this.memDuration; this.memT = this.ctx.currentTime; }
+        else if (m.type === "pos" && !this.scratching && typeof m.pos === "number" && typeof m.t === "number") { this.memPos = m.pos; this.memT = m.t; }
+      };
+      this.scratchNode = node;
     }).catch(() => null);
   }
+  private send(msg: Record<string, unknown>, transfer: Transferable[] = []) {
+    this.scratchNode?.port.postMessage({ ...msg, seq: ++this.seq }, transfer);
+  }
+
+  get hasTrack() { return Boolean(this.el.src); }
+  get duration() { return this.scratchReady ? this.memDuration : Number.isFinite(this.el.duration) ? this.el.duration : 0; }
+  /** Current position in seconds (including while scratching). */
+  get position() {
+    if (this.scratching) return this.scratchSec;
+    if (!this.scratchReady) return this.el.currentTime;
+    const p = this.memPlaying ? this.memPos + (this.ctx.currentTime - this.memT) * this.rate : this.memPos;
+    return Math.min(Math.max(0, p), this.memDuration);
+  }
+  get playing() {
+    if (this.scratching) return this.resumeAfterScratch;
+    return this.scratchReady ? this.memPlaying : !this.el.paused && !this.el.ended;
+  }
+
   async load(source: File | string, meta: { title: string; artist?: string }) {
+    const id = ++this.loadId;
+    if (this.scratching) this.endScratch();
+    this.pause();
     if (this.objectUrl) URL.revokeObjectURL(this.objectUrl);
     this.objectUrl = null;
     this.peaks = null;
-    if (this.scratching) this.endScratch();
     this.scratchReady = false;
-    this.scratchNode?.port.postMessage({ type: "unload" });
+    this.memPlaying = false; this.memPos = 0; this.memT = this.ctx.currentTime;
+    this.send({ type: "unload" });
     const url = typeof source === "string" ? source : (this.objectUrl = URL.createObjectURL(source));
     this.el.src = url;
     this.title = meta.title; this.artist = meta.artist ?? "";
-    // Waveform overview
     try {
       const data = typeof source === "string" ? await (await fetch(source, { credentials: "include" })).arrayBuffer() : await source.arrayBuffer();
       const buf = await this.ctx.decodeAudioData(data);
+      if (id !== this.loadId) return;
       this.peaks = computePeaks(buf, 800);
       await this.worklet;
-      if (this.scratchNode) {
-        const channels = Array.from({ length: Math.min(2, buf.numberOfChannels) }, (_, i) => buf.getChannelData(i).slice());
-        this.bufferRate = buf.sampleRate;
-        this.scratchNode.port.postMessage({ type: "load", channels, sampleRate: buf.sampleRate }, channels.map((c) => c.buffer));
-        this.scratchReady = true;
-      }
-    } catch { this.peaks = null; }
+      if (!this.scratchNode || id !== this.loadId) return;
+      const channels = Array.from({ length: Math.min(2, buf.numberOfChannels) }, (_, i) => buf.getChannelData(i).slice());
+      this.send({ type: "load", channels, sampleRate: buf.sampleRate }, channels.map((c) => c.buffer));
+      // Hand over from the streaming element to memory playback at the same spot.
+      const wasPlaying = !this.el.paused && !this.el.ended;
+      const at = this.el.currentTime;
+      this.el.pause();
+      this.memDuration = buf.duration;
+      this.scratchReady = true;
+      this.memPos = at; this.memT = this.ctx.currentTime;
+      if (wasPlaying) this.startMem(at);
+    } catch { if (id === this.loadId) this.peaks = null; }
   }
-  /** Platter touched: hold the record. Returns false when scratch audio is unavailable (fall back to nudge). */
+  private startMem(at: number) {
+    this.memPos = at; this.memT = this.ctx.currentTime; this.memPlaying = true;
+    this.send({ type: "play", pos: at, rate: this.rate });
+  }
+  play(): Promise<void> {
+    if (this.scratchReady) {
+      if (!this.memPlaying) this.startMem(this.position >= this.memDuration - 0.05 ? 0 : this.position);
+      return Promise.resolve();
+    }
+    return this.el.play();
+  }
+  pause() {
+    if (this.scratchReady) {
+      if (this.memPlaying) { this.memPos = this.position; this.memT = this.ctx.currentTime; this.memPlaying = false; this.send({ type: "pause" }); }
+      return;
+    }
+    this.el.pause();
+  }
+  seek(sec: number) {
+    const t = clampPosition(sec, this.duration);
+    if (this.scratchReady) { this.memPos = t; this.memT = this.ctx.currentTime; this.send({ type: "seek", pos: t }); }
+    else this.el.currentTime = t;
+  }
+  /** Playback speed (1 = normal). Tempo and pitch move together, like vinyl. */
+  setRate(r: number) {
+    if (Math.abs(r - this.rate) < 0.00001) return;
+    if (this.memPlaying) { this.memPos = this.position; this.memT = this.ctx.currentTime; }
+    this.rate = r;
+    this.el.playbackRate = r;
+    if (this.scratchReady) this.send({ type: "rate", rate: r });
+  }
+
+  /** Platter touched: hold the record. Returns false until the track is in memory (fall back to nudge). */
   beginScratch(): boolean {
     if (!this.scratchNode || !this.scratchReady) return false;
     if (this.scratching) return true;
-    this.resumeAfterScratch = this.playing;
-    this.scratchSec = this.el.currentTime;
-    this.el.pause();
-    this.scratchNode.port.postMessage({ type: "start", pos: this.scratchSec, bufferRate: this.bufferRate });
+    this.resumeAfterScratch = this.memPlaying;
+    this.scratchSec = this.position;
+    this.memPlaying = false;
+    this.send({ type: "scratchStart" });
+    this.send({ type: "target", pos: this.scratchSec });
     this.scratching = true;
     return true;
   }
   /** Move the record by `seconds` (negative = backwards). */
   scratchBy(seconds: number) {
-    if (!this.scratching || !this.scratchNode) return;
-    this.scratchSec = clampPosition(this.scratchSec + seconds, this.el.duration);
-    this.scratchNode.port.postMessage({ type: "target", pos: this.scratchSec, bufferRate: this.bufferRate });
+    if (!this.scratching) return;
+    this.scratchSec = clampPosition(this.scratchSec + seconds, this.memDuration);
+    this.send({ type: "target", pos: this.scratchSec });
   }
   /** Platter released: playback continues from where the record was left. */
   endScratch() {
     if (!this.scratching) return;
     this.scratching = false;
-    this.scratchNode?.port.postMessage({ type: "stop" });
-    this.el.currentTime = this.scratchSec;
-    if (this.resumeAfterScratch) this.el.play().catch(() => null);
+    this.memPos = this.scratchSec; this.memT = this.ctx.currentTime;
+    this.memPlaying = this.resumeAfterScratch;
+    this.send({ type: "scratchEnd", resume: this.resumeAfterScratch });
   }
-  /** Current position, including while scratching (the element is paused then). */
-  get position() { return this.scratching ? this.scratchSec : this.el.currentTime; }
-  play() { return this.el.play(); }
-  pause() { this.el.pause(); }
-  get playing() { return this.scratching ? this.resumeAfterScratch : !this.el.paused && !this.el.ended; }
 }
 
 export function computePeaks(buf: AudioBuffer, buckets: number): Float32Array {

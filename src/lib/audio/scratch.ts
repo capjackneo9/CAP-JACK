@@ -27,44 +27,68 @@ export function angleToSeconds(deltaRad: number): number {
   return (d / (2 * Math.PI)) * 1.8;
 }
 
+/**
+ * Deck voice (AudioWorklet). Once a track is decoded the deck plays it from
+ * memory here — sample-accurate and immune to network/disk hiccups — and the
+ * same voice scratches. Modes: "stop", "play" (normal speed × rate) and
+ * "scratch" (follows a platter position). Positions in messages are seconds.
+ * Reports {type:"pos", pos, t, seq} ~20×/s and {type:"ended", seq}.
+ */
 export const SCRATCH_WORKLET = `
-class NcvrScratch extends AudioWorkletProcessor {
+class NcvrDeck extends AudioWorkletProcessor {
   constructor() {
     super();
-    this.ch = null; this.len = 0; this.ratio = 1;
-    this.pos = 0; this.target = 0; this.vel = 0;
-    this.active = false; this.gain = 0;
+    this.ch = null; this.len = 0; this.bufRate = 44100; this.ratio = 1;
+    this.mode = "stop"; this.pos = 0; this.target = 0; this.vel = 0; this.rate = 1;
+    this.gain = 0; this.seq = 0; this.blocks = 0;
     this.port.onmessage = (e) => {
       const m = e.data;
-      if (m.type === "load") { this.ch = m.channels; this.len = m.channels[0].length; this.ratio = m.sampleRate / sampleRate; this.active = false; this.gain = 0; }
-      else if (m.type === "unload") { this.ch = null; this.len = 0; this.active = false; this.gain = 0; }
-      else if (m.type === "start" && this.ch) { this.pos = this.target = m.pos * m.bufferRate; this.vel = 0; this.active = true; }
-      else if (m.type === "target") { this.target = Math.min(Math.max(0, m.pos * m.bufferRate), this.len - 2); }
-      else if (m.type === "stop") { this.active = false; }
+      if (typeof m.seq === "number") this.seq = m.seq;
+      const at = (sec) => Math.min(Math.max(0, sec * this.bufRate), Math.max(0, this.len - 2));
+      switch (m.type) {
+        case "load": this.ch = m.channels; this.len = m.channels[0].length; this.bufRate = m.sampleRate; this.ratio = m.sampleRate / sampleRate; this.mode = "stop"; this.pos = 0; this.vel = 0; this.gain = 0; break;
+        case "unload": this.ch = null; this.len = 0; this.mode = "stop"; this.gain = 0; break;
+        case "play": if (this.ch) { this.pos = this.target = at(m.pos); this.rate = m.rate; this.vel = this.ratio * m.rate; this.mode = "play"; } break;
+        case "pause": this.mode = "stop"; break;
+        case "seek": this.pos = this.target = at(m.pos); break;
+        case "rate": this.rate = m.rate; break;
+        case "scratchStart": if (this.ch) { this.target = this.pos; this.mode = "scratch"; } break;
+        case "target": this.target = at(m.pos); break;
+        case "scratchEnd": this.mode = m.resume ? "play" : "stop"; break;
+      }
     };
   }
   process(_in, outputs) {
     const out = outputs[0];
     const L = out[0], R = out[1] || out[0];
-    if (!this.ch || (!this.active && this.gain <= 0)) { L.fill(0); if (R !== L) R.fill(0); return true; }
+    if (!this.ch || (this.mode === "stop" && this.gain <= 0)) { L.fill(0); if (R !== L) R.fill(0); return true; }
     const cl = this.ch[0], cr = this.ch[1] || this.ch[0];
-    const reach = 0.015 * sampleRate, maxV = 8 * this.ratio;
+    const reach = 0.015 * sampleRate, maxV = 8 * this.ratio, end = this.len - 2;
     for (let i = 0; i < L.length; i++) {
-      let want = (this.target - this.pos) / reach;
-      if (want > maxV) want = maxV; else if (want < -maxV) want = -maxV;
-      this.vel += (want - this.vel) * 0.004;
-      this.pos += this.vel;
-      if (this.pos < 0) { this.pos = 0; this.vel = 0; } else if (this.pos > this.len - 2) { this.pos = this.len - 2; this.vel = 0; }
-      this.gain += ((this.active ? 1 : 0) - this.gain) * 0.01;
+      if (this.mode === "play") {
+        this.vel += (this.ratio * this.rate - this.vel) * 0.01;
+      } else if (this.mode === "scratch") {
+        let want = (this.target - this.pos) / reach;
+        if (want > maxV) want = maxV; else if (want < -maxV) want = -maxV;
+        this.vel += (want - this.vel) * 0.004;
+      }
+      if (this.mode !== "stop") this.pos += this.vel;
+      if (this.pos < 0) { this.pos = 0; this.vel = 0; }
+      else if (this.pos > end) {
+        this.pos = end; this.vel = 0;
+        if (this.mode === "play") { this.mode = "stop"; this.port.postMessage({ type: "ended", seq: this.seq }); }
+      }
+      this.gain += ((this.mode === "stop" ? 0 : 1) - this.gain) * 0.02;
       const j = this.pos | 0, f = this.pos - j;
       L[i] = (cl[j] + (cl[j + 1] - cl[j]) * f) * this.gain;
       if (R !== L) R[i] = (cr[j] + (cr[j + 1] - cr[j]) * f) * this.gain;
     }
-    if (!this.active && this.gain < 0.001) this.gain = 0;
+    if (this.mode === "stop" && this.gain < 0.001) this.gain = 0;
+    if (++this.blocks % 8 === 0) this.port.postMessage({ type: "pos", pos: this.pos / this.bufRate, t: currentTime, seq: this.seq, playing: this.mode === "play" });
     return true;
   }
 }
-registerProcessor("ncvr-scratch", NcvrScratch);
+registerProcessor("ncvr-scratch", NcvrDeck);
 `;
 
 /**
