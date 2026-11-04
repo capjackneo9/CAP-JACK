@@ -6,7 +6,7 @@ import type { Meter } from "@/lib/audio/engine";
 import { usePresetSlot } from "./presets";
 import { useConsoleControl } from "./controlBus";
 import { scaleRange } from "@/lib/audio/midi";
-import { NUDGE_SECONDS_PER_TICK, SCRATCH_RELEASE_MS, SCRATCH_SECONDS_PER_TICK, angleToSeconds } from "@/lib/audio/scratch";
+import { jogIsIntentional, nextPitch, NUDGE_SECONDS_PER_TICK, SCRATCH_RELEASE_MS, SCRATCH_SECONDS_PER_TICK, angleToSeconds } from "@/lib/audio/scratch";
 
 type JogMode = "scratch" | "nudge";
 
@@ -25,6 +25,8 @@ export function DeckPanel({ deck, meter, library, label, sub, onLoaded }: { deck
   const hasTouch = useRef(false);      // this controller reports jog touch (so edge turns = nudge)
   const releaseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const bendTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const jogTicks = useRef<Array<{ t: number; d: number }>>([]);
+  const [ignoredTicks, setIgnoredTicks] = useState(0);
 
   usePresetSlot(deck?.id === "B" ? "deckB" : "deckA", { ...eq, cue, trackId, jogMode }, async (v) => {
     setEq({ trim: v.trim, filter: v.filter, low: v.low, mid: v.mid, high: v.high, fader: v.fader });
@@ -49,7 +51,7 @@ export function DeckPanel({ deck, meter, library, label, sub, onLoaded }: { deck
   useEffect(() => {
     if (!deck) return;
     deck.el.preservesPitch = false; // vinyl-style: tempo and pitch move together
-    deck.el.playbackRate = 1 + pitch;
+    if (Math.abs(deck.el.playbackRate - (1 + pitch)) > 0.0001) deck.el.playbackRate = 1 + pitch;
   }, [deck, pitch]);
 
   const el = deck?.el;
@@ -70,6 +72,13 @@ export function DeckPanel({ deck, meter, library, label, sub, onLoaded }: { deck
 
   function jog(delta: number) {
     if (!deck?.el.duration) return;
+    // Ignore stray ticks while the record is playing and not being held (stops jitter stutter).
+    const now = performance.now();
+    jogTicks.current = [...jogTicks.current.filter((r) => now - r.t <= 300), { t: now, d: delta }];
+    if (deck.playing && !deck.scratching && !touchHeld.current && !jogIsIntentional(jogTicks.current, now)) {
+      setIgnoredTicks((n) => n + 1);
+      return;
+    }
     const scratchNow = jogMode === "scratch" && (touchHeld.current || !hasTouch.current);
     if (!scratchNow || !deck.beginScratch()) { nudge(delta); return; }
     deck.scratchBy(delta * SCRATCH_SECONDS_PER_TICK);
@@ -94,7 +103,7 @@ export function DeckPanel({ deck, meter, library, label, sub, onLoaded }: { deck
     if (!deck) return;
     const param = a.target.split(".")[1];
     if (a.kind === "range" && param === "pitch") {
-      setPitch(scaleRange(a.target, a.value));
+      setPitch((cur) => nextPitch(cur, scaleRange(a.target, a.value)));
     } else if (a.kind === "button" && param === "scratchMode") {
       setJogMode((m) => (m === "scratch" ? "nudge" : "scratch"));
     } else if (a.kind === "range" && ["trim", "filter", "low", "mid", "high", "fader"].includes(param)) {
@@ -147,6 +156,11 @@ export function DeckPanel({ deck, meter, library, label, sub, onLoaded }: { deck
               ? deck?.scratchReady ? "Turn the jog wheel (or drag the record) to scratch — forwards and backwards." : "Scratch is ready once a track has finished loading & analysing."
               : "Turn to speed up / slow down the track for beat matching (scrubs when paused)."}
           </p>
+          {ignoredTicks > 20 && (
+            <p className="max-w-[16rem] text-[10px] text-[var(--color-gold)]">
+              Your controller keeps sending tiny jog-wheel movements for this deck ({ignoredTicks} ignored) — they no longer interrupt the music.
+            </p>
+          )}
         </div>
       </div>
       <div className="mt-3 flex flex-wrap items-center gap-2">

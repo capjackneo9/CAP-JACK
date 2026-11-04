@@ -77,3 +77,18 @@ describe("Numark Party Mix ready-made map", () => {
     expect(scaleRange("deckA.pitch", 0)).toBeCloseTo(-0.08);
   });
 });
+
+describe("controller noise guards", () => {
+  it("ignores stray single jog ticks but accepts a real turn", async () => {
+    const { jogIsIntentional } = await import("../src/lib/audio/scratch");
+    expect(jogIsIntentional([{ t: 1000, d: 1 }], 1000)).toBe(false);
+    expect(jogIsIntentional([{ t: 700, d: 1 }, { t: 1000, d: -1 }], 1000)).toBe(false);
+    expect(jogIsIntentional([{ t: 950, d: 1 }, { t: 980, d: 1 }, { t: 1000, d: 2 }], 1000)).toBe(true);
+  });
+  it("ignores pitch-fader flicker", async () => {
+    const { nextPitch } = await import("../src/lib/audio/scratch");
+    expect(nextPitch(0.02, 0.0204)).toBe(0.02);
+    expect(nextPitch(0.02, 0.03)).toBe(0.03);
+    expect(nextPitch(0.02, 0)).toBe(0);
+  });
+});

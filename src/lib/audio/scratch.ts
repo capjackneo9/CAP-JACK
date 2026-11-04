@@ -66,3 +66,22 @@ class NcvrScratch extends AudioWorkletProcessor {
 }
 registerProcessor("ncvr-scratch", NcvrScratch);
 `;
+
+/**
+ * Jog-wheel noise guard. Worn or vibrating jog wheels (and some Party Mix units)
+ * send stray single ticks; acting on them stutters a playing deck. A turn only
+ * counts once it adds up to `minTicks` within `windowMs`.
+ */
+export const JOG_WINDOW_MS = 150;
+export const JOG_MIN_TICKS = 3;
+export function jogIsIntentional(recent: Array<{ t: number; d: number }>, now: number, minTicks = JOG_MIN_TICKS, windowMs = JOG_WINDOW_MS): boolean {
+  let sum = 0;
+  for (const r of recent) if (now - r.t <= windowMs) sum += Math.abs(r.d);
+  return sum >= minTicks;
+}
+
+/** Pitch-fader noise guard: changes smaller than 0.1% are ignored; values are rounded to 0.05%. */
+export function nextPitch(current: number, incoming: number): number {
+  const q = Math.round(incoming * 2000) / 2000;
+  return Math.abs(q - current) < 0.001 && q !== 0 ? current : q;
+}

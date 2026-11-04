@@ -39,7 +39,10 @@ export function MidiPanel() {
   const guideUsed = useRef(new Set<string>());   // controls already assigned during this guided run
   const guideWait = useRef(0);                    // ignore input briefly after each step
   const flipRef = useRef(false);
+  const showLogRef = useRef(false);
+  const lastUi = useRef(0);
   flipRef.current = flipPitch;
+  showLogRef.current = showLog;
   const accessRef = useRef<MIDIAccess | null>(null);
   const learnRef = useRef<string | null>(null);
   const mapRef = useRef(mapping);
@@ -73,11 +76,16 @@ export function MidiPanel() {
     const msg = parseMidi(e.data);
     const dev = (e.currentTarget as MIDIInput | null)?.name ?? "MIDI";
     const raw = Array.from(e.data, (b) => b.toString(16).padStart(2, "0")).join(" ");
-    setLog((l) => [{ t: Date.now(), dev, raw, desc: msg ? `${describeKey(msg.key)} = ${msg.value}${msg.type === "note" ? (msg.on ? " (press)" : " (release)") : ""}` : "not used by the console" }, ...l].slice(0, 14));
+    const nowMs = performance.now();
+    if (showLogRef.current) setLog((l) => [{ t: Date.now(), dev, raw, desc: msg ? `${describeKey(msg.key)} = ${msg.value}${msg.type === "note" ? (msg.on ? " (press)" : " (release)") : ""}` : "not used by the console" }, ...l].slice(0, 14));
     if (!msg) return;
-    setLast(msg);
-    setBlink(true);
-    setTimeout(() => setBlink(false), 90);
+    // Screen updates are throttled: a chatty controller must not keep the page busy.
+    if (nowMs - lastUi.current > 100 || learnRef.current || guideRef.current !== null) {
+      lastUi.current = nowMs;
+      setLast(msg);
+      setBlink(true);
+      setTimeout(() => setBlink(false), 90);
+    }
     const step = guideRef.current;
     if (step !== null) {
       const t = PARTY_MIX_GUIDE[step]?.target;
@@ -199,7 +207,7 @@ export function MidiPanel() {
           Now move or press the control on your controller for <strong>{CONTROL_TARGETS.find((t) => t.id === learning)?.group} — {CONTROL_TARGETS.find((t) => t.id === learning)?.label}</strong>…
           <button type="button" className="ml-3 text-xs underline" onClick={() => setLearning(null)}>Cancel</button>
           {hint && <p className="mt-1 text-xs text-[var(--color-gold)]">{hint}</p>}
-          {!log.length && <p className="mt-1 text-xs text-[var(--color-muted)]">Nothing received from the controller yet. If nothing appears when you touch it, see the MIDI monitor below.</p>}
+          {!last && <p className="mt-1 text-xs text-[var(--color-muted)]">Nothing received from the controller yet. If nothing appears when you touch it, see the MIDI monitor below.</p>}
         </div>
       )}
       {showLog && (
