@@ -34,6 +34,10 @@ Works in **Chrome or Edge on a computer** (Web MIDI). Safari and phones are not 
    into the controller, and press each deck's PFL/Cue button to preview. (Chrome/Edge support this.)
 6. Enter your DJ username/password in the transmitter and press **Go live**.
 
+**Soft takeover:** knobs and faders on the controller only take over once you turn them to (or past) where the
+on-screen control is — so a knob left turned down can't silence a deck, and moving a slider with the mouse sticks.
+Tiny back-and-forth flicker from worn knobs is ignored.
+
 **Nothing happens when you press Learn?** Open **MIDI monitor** on the controller bar and press a button. If no lines appear,
 Chrome isn't receiving the controller: quit the other DJ apps, check padlock → Site settings → *MIDI devices: Allow*,
 re-plug the USB cable and press **Reconnect**. If lines appear but Learn doesn't take, the yellow hint under “Listening…”

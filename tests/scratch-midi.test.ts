@@ -92,3 +92,36 @@ describe("controller noise guards", () => {
     expect(nextPitch(0.02, 0)).toBe(0);
   });
 });
+
+describe("soft takeover for knobs and faders", () => {
+  it("a knob left at zero cannot pull a unity trim down until it is turned up to it", async () => {
+    const { softTakeover, unscaleRange } = await import("../src/lib/audio/midi");
+    const st = new Map();
+    const cur = unscaleRange("deckA.trim", 1); // console trim = 1 (unity) → 0.5
+    expect(softTakeover(st, "deckA.trim", 0, cur)).toBe(false);
+    expect(softTakeover(st, "deckA.trim", 1 / 127, cur)).toBe(false);
+    expect(softTakeover(st, "deckA.trim", 0.3, cur)).toBe(false);
+    expect(softTakeover(st, "deckA.trim", 0.55, cur)).toBe(true); // passed 12 o'clock → engaged
+    expect(softTakeover(st, "deckA.trim", 0.6, 0.55)).toBe(true);  // follows from now on
+  });
+  it("ignores flicker between two neighbouring values", async () => {
+    const { softTakeover } = await import("../src/lib/audio/midi");
+    const st = new Map();
+    expect(softTakeover(st, "deckA.low", 0.5, 0.5)).toBe(true);
+    expect(softTakeover(st, "deckA.low", 0.5 + 1 / 127, 0.5)).toBe(true);
+    expect(softTakeover(st, "deckA.low", 0.5, 0.5 + 1 / 127)).toBe(false); // back again = flicker
+  });
+  it("lets go after the mouse moves the slider, and picks up again when crossed", async () => {
+    const { softTakeover } = await import("../src/lib/audio/midi");
+    const st = new Map();
+    expect(softTakeover(st, "crossfader", 0.2, 0.2)).toBe(true);
+    // mouse moved crossfader to 0.8
+    expect(softTakeover(st, "crossfader", 0.25, 0.8)).toBe(false);
+    expect(softTakeover(st, "crossfader", 0.85, 0.8)).toBe(true);
+  });
+  it("unscaleRange inverts scaleRange", async () => {
+    const { scaleRange: sc, unscaleRange } = await import("../src/lib/audio/midi");
+    for (const t of ["deckA.low", "deckA.high", "deckA.trim", "deckA.filter", "deckA.pitch", "master", "mic.gain", "cue.volume"])
+      for (const v of [0, 0.25, 0.75, 1]) expect(unscaleRange(t, sc(t, v))).toBeCloseTo(v, 5);
+  });
+});

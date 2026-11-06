@@ -201,3 +201,47 @@ export const PARTY_MIX_GUIDE: GuideStep[] = [
   ...guideDeck("A", "LEFT", 0),
   ...guideDeck("B", "RIGHT", 4),
 ];
+
+/** Inverse of scaleRange: a console value back to the controller's 0..1 scale. */
+export function unscaleRange(target: string, value: number): number {
+  const p = target.split(".").pop();
+  let v: number;
+  if (p === "low" || p === "mid" || p === "high") v = value < 0 ? (value + 24) / 48 : value / 24 + 0.5;
+  else if (p === "filter") v = (value + 1) / 2;
+  else if (p === "pitch") v = (value / 0.08 + 1) / 2;
+  else if (p === "trim") v = value / 2;
+  else if (target === "master") v = value / 1.2;
+  else if (target === "mic.gain") v = value / 3;
+  else if (target === "cue.volume") v = value / 1.5;
+  else v = value;
+  return Math.min(1, Math.max(0, v));
+}
+
+export interface TakeoverState { prevIn?: number; lastIn?: number; applied?: number }
+
+/**
+ * Soft takeover + jitter filter for knobs and faders (what pro DJ software does).
+ * - Flicker between two neighbouring values (A→B→A) is ignored.
+ * - After the console value was changed some other way (mouse, preset), the
+ *   controller only takes over once its knob reaches / passes that value, so a
+ *   knob left at zero can't silence a deck.
+ * Returns true when the incoming value should be applied.
+ */
+export function softTakeover(states: Map<string, TakeoverState>, target: string, incoming: number, current01: number): boolean {
+  const s = states.get(target) ?? {};
+  states.set(target, s);
+  const step = 2.5 / 127;
+  const oscillating = s.prevIn !== undefined && s.lastIn !== undefined && Math.abs(incoming - s.prevIn) < 1e-6 && Math.abs(incoming - s.lastIn) <= step;
+  const before = s.lastIn;
+  s.prevIn = s.lastIn;
+  s.lastIn = incoming;
+  if (oscillating) return false;
+  const engaged = s.applied !== undefined && Math.abs(s.applied - current01) < 0.02;
+  if (!engaged) {
+    const near = Math.abs(incoming - current01) < 0.04;
+    const crossed = before !== undefined && (before - current01) * (incoming - current01) <= 0;
+    if (!near && !crossed) return false;
+  }
+  s.applied = incoming;
+  return true;
+}

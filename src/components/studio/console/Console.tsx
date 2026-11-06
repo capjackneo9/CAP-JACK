@@ -11,7 +11,7 @@ import { Emblem } from "../../brand/Logo";
 import { PresetBar, PresetRegistryProvider, usePresetSlot } from "./presets";
 import { padUrl, type PadSource } from "@/lib/console/preset";
 import { MidiPanel } from "./MidiPanel";
-import { useConsoleControl } from "./controlBus";
+import { acceptRange, useConsoleControl } from "./controlBus";
 import { scaleRange } from "@/lib/audio/midi";
 
 type Meters = ReturnType<MixEngine["meters"]>;
@@ -117,9 +117,9 @@ function MasterSection({ engine, meters }: { engine: MixEngine; meters: Meters |
   });
   useConsoleControl(["crossfader", "master", "cue"], (a) => {
     if (a.kind !== "range") return;
-    if (a.target === "crossfader") setXf(a.value);
-    else if (a.target === "cue.volume") setCueVol(scaleRange("cue.volume", a.value));
-    else setMaster(scaleRange("master", a.value));
+    if (a.target === "crossfader") { if (acceptRange(a.target, a.value, xf)) setXf(a.value); }
+    else if (a.target === "cue.volume") { if (acceptRange(a.target, a.value, cueVol)) setCueVol(scaleRange("cue.volume", a.value)); }
+    else if (acceptRange(a.target, a.value, master)) setMaster(scaleRange("master", a.value));
   });
   useEffect(() => { engine.cueBus.gain.value = cueVol; }, [engine, cueVol]);
   useEffect(() => { engine.setCrossfade(xf); }, [engine, xf]);
@@ -194,7 +194,7 @@ function MicChannel({ engine, meter }: { engine: MixEngine; meter?: Meter }) {
   }, [enabled, meter]);
 
   useConsoleControl(["mic"], (a) => {
-    if (a.target === "mic.gain" && a.kind === "range") setGain(scaleRange("mic.gain", a.value));
+    if (a.target === "mic.gain" && a.kind === "range" && acceptRange(a.target, a.value, gain)) setGain(scaleRange("mic.gain", a.value));
     if (a.target === "mic.toggle" && a.kind === "button") { if (enabled) setOpen((o) => !o); else setErr("Enable the mic in the console first, then use the controller's mic button."); }
     if (a.target === "mic.mute" && a.kind === "button") setMuted((m) => !m);
   });

@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useRef } from "react";
-import type { ControlAction } from "@/lib/audio/midi";
+import { softTakeover, unscaleRange, type ControlAction, type TakeoverState } from "@/lib/audio/midi";
 
 /** Routes controller actions to the console section that owns each target. */
 const bus = typeof window !== "undefined" ? new EventTarget() : null;
@@ -23,4 +23,10 @@ export function useConsoleControl(prefixes: string[], handler: (a: ControlAction
     bus.addEventListener("ctl", fn);
     return () => bus.removeEventListener("ctl", fn);
   }, [key]);
+}
+
+const takeovers = new Map<string, TakeoverState>();
+/** Should this knob/fader move from the controller be applied to a console value now at `current`? */
+export function acceptRange(target: string, value01: number, current: number): boolean {
+  return softTakeover(takeovers, target, value01, unscaleRange(target, current));
 }

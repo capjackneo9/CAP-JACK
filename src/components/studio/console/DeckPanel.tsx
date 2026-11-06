@@ -4,7 +4,7 @@ import type { Deck } from "@/lib/audio/engine";
 import { Knob, MeterBar, Waveform, fmtTime } from "./parts";
 import type { Meter } from "@/lib/audio/engine";
 import { usePresetSlot } from "./presets";
-import { useConsoleControl } from "./controlBus";
+import { acceptRange, useConsoleControl } from "./controlBus";
 import { scaleRange } from "@/lib/audio/midi";
 import { jogIsIntentional, nextPitch, NUDGE_SECONDS_PER_TICK, SCRATCH_RELEASE_MS, SCRATCH_SECONDS_PER_TICK, angleToSeconds } from "@/lib/audio/scratch";
 
@@ -103,11 +103,11 @@ export function DeckPanel({ deck, meter, library, label, sub, onLoaded }: { deck
     if (!deck) return;
     const param = a.target.split(".")[1];
     if (a.kind === "range" && param === "pitch") {
-      setPitch((cur) => nextPitch(cur, scaleRange(a.target, a.value)));
+      if (acceptRange(a.target, a.value, pitch)) setPitch((cur) => nextPitch(cur, scaleRange(a.target, a.value)));
     } else if (a.kind === "button" && param === "scratchMode") {
       setJogMode((m) => (m === "scratch" ? "nudge" : "scratch"));
     } else if (a.kind === "range" && ["trim", "filter", "low", "mid", "high", "fader"].includes(param)) {
-      setEq((prev) => ({ ...prev, [param]: scaleRange(a.target, a.value) }));
+      if (acceptRange(a.target, a.value, eq[param as keyof typeof eq])) setEq((prev) => ({ ...prev, [param]: scaleRange(a.target, a.value) }));
     } else if (a.kind === "button" && param === "play") {
       if (deck.hasTrack) { if (deck.playing) deck.pause(); else deck.play().catch((e) => setErr(e.message)); }
     } else if (a.kind === "button" && param === "cue") {
