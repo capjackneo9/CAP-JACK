@@ -4,7 +4,7 @@ import type { Deck } from "@/lib/audio/engine";
 import { Knob, MeterBar, Waveform, fmtTime } from "./parts";
 import type { Meter } from "@/lib/audio/engine";
 import { usePresetSlot } from "./presets";
-import { acceptRange, useConsoleControl } from "./controlBus";
+import { acceptRange, reportControl, useConsoleControl } from "./controlBus";
 import { scaleRange } from "@/lib/audio/midi";
 import { jogIsIntentional, nextPitch, NUDGE_SECONDS_PER_TICK, SCRATCH_RELEASE_MS, SCRATCH_SECONDS_PER_TICK, angleToSeconds } from "@/lib/audio/scratch";
 
@@ -107,7 +107,14 @@ export function DeckPanel({ deck, meter, library, label, sub, onLoaded }: { deck
     } else if (a.kind === "button" && param === "scratchMode") {
       setJogMode((m) => (m === "scratch" ? "nudge" : "scratch"));
     } else if (a.kind === "range" && ["trim", "filter", "low", "mid", "high", "fader"].includes(param)) {
-      if (acceptRange(a.target, a.value, eq[param as keyof typeof eq])) setEq((prev) => ({ ...prev, [param]: scaleRange(a.target, a.value) }));
+      if (a.force || acceptRange(a.target, a.value, eq[param as keyof typeof eq])) setEq((prev) => ({ ...prev, [param]: scaleRange(a.target, a.value) }));
+    } else if (a.kind === "adjust" && param === "fader") {
+      setEq((prev) => ({ ...prev, fader: Math.min(1, Math.max(0, prev.fader + a.delta)) }));
+    } else if (a.kind === "button" && param === "start") {
+      if (!deck.hasTrack) reportControl(`Deck ${deck.id} has no track loaded.`);
+      else if (!deck.playing) deck.play().catch((e) => setErr(e.message));
+    } else if (a.kind === "button" && param === "stop") {
+      if (deck.playing) deck.pause();
     } else if (a.kind === "button" && param === "play") {
       if (deck.hasTrack) { if (deck.playing) deck.pause(); else deck.play().catch((e) => setErr(e.message)); }
     } else if (a.kind === "button" && param === "cue") {

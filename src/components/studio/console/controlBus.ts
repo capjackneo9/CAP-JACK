@@ -30,3 +30,18 @@ const takeovers = new Map<string, TakeoverState>();
 export function acceptRange(target: string, value01: number, current: number): boolean {
   return softTakeover(takeovers, target, value01, unscaleRange(target, current));
 }
+
+/** Short status lines from console sections back to whoever sent a command (the voice panel shows them). */
+export function reportControl(text: string) {
+  bus?.dispatchEvent(new CustomEvent<string>("report", { detail: text }));
+}
+export function useControlReports(handler: (text: string) => void) {
+  const h = useRef(handler);
+  h.current = handler;
+  useEffect(() => {
+    if (!bus) return;
+    const fn = (e: Event) => h.current((e as CustomEvent<string>).detail);
+    bus.addEventListener("report", fn);
+    return () => bus.removeEventListener("report", fn);
+  }, []);
+}

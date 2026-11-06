@@ -66,7 +66,8 @@ export function parseMidi(data: ArrayLike<number>): MidiMessage | null {
 }
 
 export type ControlAction =
-  | { target: string; kind: "range"; value: number }  // 0..1
+  | { target: string; kind: "range"; value: number; force?: boolean }  // 0..1 (force = skip soft takeover, e.g. voice)
+  | { target: string; kind: "adjust"; delta: number } // relative change on the console's own scale
   | { target: string; kind: "button" }                // a press
   | { target: string; kind: "jog"; delta: number }    // signed ticks
   | { target: string; kind: "touch"; down: boolean }; // jog-wheel top touched / released

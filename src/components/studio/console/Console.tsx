@@ -11,7 +11,8 @@ import { Emblem } from "../../brand/Logo";
 import { PresetBar, PresetRegistryProvider, usePresetSlot } from "./presets";
 import { padUrl, type PadSource } from "@/lib/console/preset";
 import { MidiPanel } from "./MidiPanel";
-import { acceptRange, useConsoleControl } from "./controlBus";
+import { acceptRange, reportControl, useConsoleControl } from "./controlBus";
+import { VoicePanel } from "./VoicePanel";
 import { scaleRange } from "@/lib/audio/midi";
 
 type Meters = ReturnType<MixEngine["meters"]>;
@@ -83,6 +84,7 @@ export function Console(props: ConsoleProps) {
     <div className="space-y-4">
       <PresetBar ready={libReady} />
       <MidiPanel />
+      <VoicePanel />
       <TransmitPanel engine={engine} {...props} />
       {libErr && <p className="text-sm text-red-300">Library: {libErr}</p>}
       <div className="grid gap-4 xl:grid-cols-[1fr_auto_1fr]">
@@ -116,7 +118,9 @@ function MasterSection({ engine, meters }: { engine: MixEngine; meters: Meters |
     if (typeof v.cueVol === "number") setCueVol(v.cueVol);
   });
   useConsoleControl(["crossfader", "master", "cue"], (a) => {
+    if (a.kind === "adjust" && a.target === "master") { setMaster((m) => Math.min(1.2, Math.max(0, m + a.delta))); return; }
     if (a.kind !== "range") return;
+    if (a.force && a.target === "crossfader") { setXf(a.value); return; }
     if (a.target === "crossfader") { if (acceptRange(a.target, a.value, xf)) setXf(a.value); }
     else if (a.target === "cue.volume") { if (acceptRange(a.target, a.value, cueVol)) setCueVol(scaleRange("cue.volume", a.value)); }
     else if (acceptRange(a.target, a.value, master)) setMaster(scaleRange("master", a.value));
@@ -197,6 +201,10 @@ function MicChannel({ engine, meter }: { engine: MixEngine; meter?: Meter }) {
     if (a.target === "mic.gain" && a.kind === "range" && acceptRange(a.target, a.value, gain)) setGain(scaleRange("mic.gain", a.value));
     if (a.target === "mic.toggle" && a.kind === "button") { if (enabled) setOpen((o) => !o); else setErr("Enable the mic in the console first, then use the controller's mic button."); }
     if (a.target === "mic.mute" && a.kind === "button") setMuted((m) => !m);
+    if (a.target === "mic.open") { if (enabled) setOpen(true); else reportControl("Enable the mic in the console first."); }
+    if (a.target === "mic.close") setOpen(false);
+    if (a.target === "mic.muteOn") setMuted(true);
+    if (a.target === "mic.muteOff") setMuted(false);
   });
 
   const refreshDevices = useCallback(() => navigator.mediaDevices.enumerateDevices().then((d) => setDevices(d.filter((x) => x.kind === "audioinput"))), []);
@@ -387,18 +395,20 @@ function QueuePanel({ engine, library }: { engine: MixEngine; library: LibraryTr
     if (a.kind !== "button") return;
     const next = queue[0];
     const d = a.target.startsWith("deckA") ? engine.decks.A : engine.decks.B;
-    if (!next) return setMsg("Queue is empty — add tracks to load from the controller.");
+    if (!next) { reportControl("The queue is empty."); return setMsg("Queue is empty — add tracks to load from the controller."); }
     if (d.playing) return setMsg(`Deck ${d.id} is playing — stop it before loading.`);
     await d.load(`/api/studio/library/${next.id}/audio`, { title: next.title, artist: next.artistName });
     setQueue((q) => q.slice(1));
     setMsg(`Loaded “${next.title}” to Deck ${d.id}.`);
   });
 
+  useConsoleControl(["queue.next"], () => { loadNext(); });
+
   async function loadNext() {
     const next = queue[0];
-    if (!next) return;
+    if (!next) { reportControl("The queue is empty."); return; }
     const free = !engine.decks.A.playing ? engine.decks.A : !engine.decks.B.playing ? engine.decks.B : null;
-    if (!free) return setMsg("Both decks are playing — stop one first.");
+    if (!free) { reportControl("Both decks are playing — stop one first."); return setMsg("Both decks are playing — stop one first."); }
     await free.load(`/api/studio/library/${next.id}/audio`, { title: next.title, artist: next.artistName });
     setQueue((q) => q.slice(1));
     setMsg(`Loaded “${next.title}” to Deck ${free.id}.`);
@@ -442,6 +452,21 @@ function RecorderPanel({ engine }: { engine: MixEngine }) {
     const id = setInterval(() => setElapsed((Date.now() - (rec.current.startedAt ?? Date.now())) / 1000), 500);
     return () => clearInterval(id);
   }, [recording]);
+  function startRec() {
+    if (recording) return;
+    const ok = engine.canRecord();
+    if (!ok.ok) { reportControl(ok.reason!); return setErr(ok.reason!); }
+    setErr(null);
+    try { rec.current.start(engine.programOut.stream); setRecording(true); setElapsed(0); } catch (e) { setErr((e as Error).message); }
+  }
+  async function stopRec() {
+    if (!recording) return;
+    const blob = await rec.current.stop();
+    setRecording(false);
+    if (url) URL.revokeObjectURL(url);
+    setUrl(URL.createObjectURL(blob));
+  }
+  useConsoleControl(["record"], (a) => { if (a.target === "record.start") startRec(); else if (a.target === "record.stop") stopRec(); });
   return (
     <section className="glass p-4" aria-label="Recorder">
       <div className="mb-3 flex items-center justify-between">
@@ -450,19 +475,9 @@ function RecorderPanel({ engine }: { engine: MixEngine }) {
       </div>
       <div className="flex flex-wrap gap-2">
         {!recording ? (
-          <button type="button" className="btn btn-live px-4 py-1.5 text-sm" onClick={() => {
-            const ok = engine.canRecord();
-            if (!ok.ok) return setErr(ok.reason!);
-            setErr(null);
-            try { rec.current.start(engine.programOut.stream); setRecording(true); setElapsed(0); } catch (e) { setErr((e as Error).message); }
-          }}>Start recording</button>
+          <button type="button" className="btn btn-live px-4 py-1.5 text-sm" onClick={startRec}>Start recording</button>
         ) : (
-          <button type="button" className="btn btn-ghost px-4 py-1.5 text-sm" onClick={async () => {
-            const blob = await rec.current.stop();
-            setRecording(false);
-            if (url) URL.revokeObjectURL(url);
-            setUrl(URL.createObjectURL(blob));
-          }}>Stop</button>
+          <button type="button" className="btn btn-ghost px-4 py-1.5 text-sm" onClick={stopRec}>Stop</button>
         )}
         {url && <a className="btn btn-gold px-4 py-1.5 text-sm" href={url} download={`ncvr-program-${new Date().toISOString().slice(0, 16)}.webm`}>Download recording</a>}
       </div>
@@ -501,6 +516,20 @@ function TransmitPanel({ engine, webcastUrl, webDjUrl, canReturnToAutoDJ }: { en
     return () => clearInterval(id);
   }, [transport, engine]);
 
+  async function goLive() { await engine.resume(); caster.current!.connect(url.trim(), user.trim(), pass, engine.programOut.stream, bitrate); }
+  // Voice: the voice panel has already asked for and heard “confirm”.
+  useConsoleControl(["transmit"], (a) => {
+    if (a.target === "transmit.golive") {
+      if (transport !== "disconnected" && transport !== "error") return reportControl("You're already connected.");
+      if (!url || !user || !pass) return reportControl("Type your DJ username and password in the transmitter first.");
+      if (!mime) return reportControl("This browser can't broadcast — use Chrome or Edge.");
+      goLive();
+    } else if (a.target === "transmit.end") {
+      if (transport === "disconnected") return reportControl("You're not live.");
+      caster.current!.disconnect();
+    }
+  });
+
   const np = info?.nowPlaying;
   const onAir = deriveOnAir({ transport, engineLive: Boolean(np?.live.isLive), engineStreamer: np?.live.streamerName ?? null, ourStreamer: user || null });
   const lit = onAir === "ON_AIR";
@@ -537,7 +566,7 @@ function TransmitPanel({ engine, webcastUrl, webDjUrl, canReturnToAutoDJ }: { en
         <div className="flex flex-col gap-2">
           {transport === "disconnected" || transport === "error" ? (
             <ConfirmAction phrase="GO LIVE" label="Go live" className="btn btn-live" disabled={!url || !user || !pass || !mime}
-              onConfirm={async () => { await engine.resume(); caster.current!.connect(url.trim(), user.trim(), pass, engine.programOut.stream, bitrate); }}>
+              onConfirm={goLive}>
               <p className="text-sm text-[var(--color-muted)]">Your program bus will be sent to the station. AzuraCast takes over from AutoDJ once it accepts your DJ login.</p>
             </ConfirmAction>
           ) : (
