@@ -38,6 +38,7 @@ const meta = z.object({
   kind: z.enum(["MUSIC_VIDEO", "CARTOON", "PROGRAM", "MOVIE", "COMMERCIAL"]).default("MUSIC_VIDEO"),
   title: z.string().trim().min(1).max(200),
   artistName: z.string().trim().min(1).max(200),
+  description: z.string().trim().max(300).optional(),
   advertiser: z.string().trim().max(200).optional(),
   startsOn: z.coerce.date().optional(),
   endsOn: z.coerce.date().optional(),
@@ -58,7 +59,7 @@ export const POST = guarded("video.manage", async (req, actor) => {
     const last = await db.musicVideo.aggregate({ _max: { sortOrder: true } });
     const v = await db.musicVideo.create({
       data: {
-        stationId: station.id, kind: d.kind, title: d.title, artistName: d.artistName, durationSec: d.durationSec, rightsConfirmed: true,
+        stationId: station.id, kind: d.kind, title: d.title, artistName: d.artistName, description: d.description || null, durationSec: d.durationSec, rightsConfirmed: true,
         advertiser: d.kind === "COMMERCIAL" ? d.advertiser || d.artistName : null,
         startsOn: d.kind === "COMMERCIAL" ? d.startsOn ?? null : null,
         endsOn: d.kind === "COMMERCIAL" ? d.endsOn ?? null : null,

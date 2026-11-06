@@ -45,7 +45,7 @@ export async function GET(req: Request) {
     const today = `${lt.year}-${String(lt.month).padStart(2, "0")}-${String(lt.day).padStart(2, "0")}`;
     const blocks = await db.tvBlock.findMany({ where: { active: true } });
     let block = activeBlock(blocks, lt.isoDay, lt.minute);
-    const select = { id: true, title: true, artistName: true, durationSec: true, advertiser: true };
+    const select = { id: true, title: true, artistName: true, description: true, durationSec: true, advertiser: true };
 
     // Feature presentation inside the block (e.g. a 1-hour movie)
     if (block?.featureVideoId && block.featureStartMinute != null && (!block.featureDate || block.featureDate === today)) {
@@ -56,7 +56,7 @@ export async function GET(req: Request) {
         if (off != null) {
           return NextResponse.json({
             mode: "rotation", serverTime: now, offsetSec: off, remainingSec: f.durationSec - off,
-            item: { type: "video", feature: true, id: f.id, title: f.title, artist: f.artistName, src: `/api/tv/video/${f.id}`, durationSec: f.durationSec },
+            item: { type: "video", feature: true, id: f.id, title: f.title, artist: f.artistName, info: f.description, src: `/api/tv/video/${f.id}`, durationSec: f.durationSec },
             next: [], block: { title: block.title, kind: block.kind, label: KIND_LABEL[block.kind] }, look: resolveLook(station, block),
           }, noStore);
         }
@@ -95,7 +95,7 @@ export async function GET(req: Request) {
       const v = content.find((x) => x.id === pos.videoId)!;
       return NextResponse.json({
         ...base,
-        item: { type: "video", id: v.id, title: v.title, artist: v.artistName, src: `/api/tv/video/${v.id}`, durationSec: v.durationSec },
+        item: { type: "video", id: v.id, title: v.title, artist: v.artistName, info: v.description, src: `/api/tv/video/${v.id}`, durationSec: v.durationSec },
         next: upNext(content, pos.index, 3).map((x) => ({ title: x.title, artist: x.artistName })),
       }, noStore);
     }

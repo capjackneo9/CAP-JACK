@@ -4,7 +4,7 @@ import { usePlayer } from "../player/PlayerProvider";
 import { playWhep } from "@/lib/tv/whep";
 
 type Item =
-  | { type: "video"; id: string; title: string; artist: string; src: string; durationSec: number; feature?: boolean }
+  | { type: "video"; id: string; title: string; artist: string; info?: string | null; src: string; durationSec: number; feature?: boolean }
   | { type: "commercial"; id: string; title: string; advertiser: string; src: string; durationSec: number }
   | { type: "card" };
 type Block = { title: string; kind: string; label: string } | null;
@@ -225,6 +225,7 @@ export function TvPlayer({ bugSrc = "/brand/ncvr-emblem.webp", previewId }: { bu
           <div className={`pointer-events-none absolute z-[2] bottom-14 max-w-[80%] font-[family-name:var(--font-display)] sm:bottom-16 leading-tight text-white ${look.position === "bottom-left" ? "right-4 text-right" : "left-4 sm:left-8"}`} style={{ textShadow: "2px 2px 0 #000, 0 0 12px rgba(0,0,0,0.9)" }}>
             <div className="text-lg font-black uppercase sm:text-3xl">{item.artist}</div>
             <div className="text-sm sm:text-xl">&ldquo;{item.title}&rdquo;</div>
+            {item.info && <div className="mt-0.5 text-xs text-white/85 sm:text-sm">{item.info}</div>}
             <div className="mt-1 text-[10px] uppercase tracking-[0.3em] text-[var(--color-gold)] sm:text-xs">{item.feature ? "Feature presentation" : block ? block.title : "NCVR TV"}</div>
           </div>
         )}

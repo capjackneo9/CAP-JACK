@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { Badge } from "../ui/Panel";
 import { fmtTime } from "./console/parts";
 import { DAY_SHORT, formatMinute } from "@/lib/schedule";
@@ -14,7 +14,7 @@ const KINDS: Array<[Kind, string, string]> = [
   ["MOVIE", "Movies", "Studio / director"],
   ["COMMERCIAL", "Commercials", "Advertiser"],
 ];
-interface V { id: string; kind: Kind; title: string; artistName: string; advertiser: string | null; durationSec: number; status: string; sortOrder: number; fileSize: number; startsOn: string | null; endsOn: string | null; weight: number }
+interface V { id: string; kind: Kind; title: string; artistName: string; description: string | null; advertiser: string | null; durationSec: number; status: string; sortOrder: number; fileSize: number; startsOn: string | null; endsOn: string | null; weight: number }
 interface Live { configured: boolean; live: boolean; hlsUrl: string | null; error?: string }
 interface Settings extends LookSettings { enabled: boolean; breakEvery: number; breakSeconds: number }
 type Block = BlockFull & { kind: Kind };
@@ -34,6 +34,7 @@ export function VideoManager() {
   const [progress, setProgress] = useState<number | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const [uploadKind, setUploadKind] = useState<Kind>("MUSIC_VIDEO");
+  const [editing, setEditing] = useState<string | null>(null);
 
   const load = async () => {
     const r = await fetch("/api/studio/videos");
@@ -50,6 +51,32 @@ export function VideoManager() {
     const j = await r.json();
     if (!r.ok) return setMsg({ tone: "err", text: j.error });
     setVideos((vs) => vs.map((v) => (v.id === id ? { ...v, ...j.video } : v)).sort((a, b) => a.sortOrder - b.sortOrder));
+  }
+  async function remove(v: V) {
+    const where = v.status === "APPROVED" ? " It is ON AIR now and will leave the channel immediately." : "";
+    if (!window.confirm(`Delete “${v.title}” by ${v.artistName} for good?${where}\n\nThe video file is removed from the server. This can't be undone.`)) return;
+    const r = await fetch(`/api/studio/videos/${v.id}`, { method: "DELETE" });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) return setMsg({ tone: "err", text: j.error ?? "Delete failed" });
+    setVideos((vs) => vs.filter((x) => x.id !== v.id));
+    if (preview === v.id) setPreview(null);
+    if (editing === v.id) setEditing(null);
+    setMsg({ tone: "ok", text: `Deleted “${v.title}”.` });
+  }
+  async function saveEdit(v: V, form: HTMLFormElement) {
+    const fd = new FormData(form);
+    const str = (k: string) => String(fd.get(k) ?? "").trim();
+    const body: Record<string, unknown> = { action: "update", title: str("title"), artistName: str("artistName"), description: str("description") || null };
+    if (v.kind === "COMMERCIAL") {
+      body.advertiser = str("advertiser") || null;
+      body.weight = Number(fd.get("weight") ?? v.weight);
+      body.startsOn = str("startsOn") || null;
+      body.endsOn = str("endsOn") || null;
+    }
+    if (!body.title || !body.artistName) return setMsg({ tone: "err", text: "Title and name can't be empty." });
+    await act(v.id, body);
+    setEditing(null);
+    setMsg({ tone: "ok", text: `Saved “${body.title}”.` });
   }
   const list = videos.filter((v) => v.kind === tab);
   function move(i: number, dir: -1 | 1) {
@@ -171,6 +198,7 @@ export function VideoManager() {
           </select></label>
         <label className="text-xs"><span className="label">{ownerLabel} *</span><input name="artistName" required defaultValue={uploadKind === "MUSIC_VIDEO" ? "Caprio Jackson" : ""} key={uploadKind} className="field" /></label>
         <label className="text-xs md:col-span-2"><span className="label">{uploadKind === "COMMERCIAL" ? "Spot name *" : uploadKind === "MUSIC_VIDEO" ? "Song title *" : "Episode title *"}</span><input name="title" required className="field" /></label>
+        <label className="text-xs md:col-span-2"><span className="label">Info (optional — shown under the title on screen)</span><input name="description" maxLength={300} placeholder="e.g. From the album Night Cap · 2026 · Directed by …" className="field" /></label>
         {uploadKind === "COMMERCIAL" && (
           <>
             <label className="text-xs"><span className="label">Runs from</span><input name="startsOn" type="date" className="field" /></label>
@@ -202,13 +230,15 @@ export function VideoManager() {
           <thead className="text-left text-xs uppercase text-[var(--color-muted)]"><tr><th className="p-3">{tab === "COMMERCIAL" ? "" : "Order"}</th><th>{tab === "COMMERCIAL" ? "Commercial" : "Video"}</th><th>Length</th><th>Status</th><th className="p-3">Actions</th></tr></thead>
           <tbody>
             {list.map((v, i) => (
-              <tr key={v.id} className="border-t border-white/5">
+              <Fragment key={v.id}>
+              <tr className="border-t border-white/5">
                 <td className="p-3">{tab !== "COMMERCIAL" && <>
                   <button type="button" aria-label={`Move ${v.title} up`} className="px-1 text-[var(--color-muted)] hover:text-white" onClick={() => move(i, -1)}>▲</button>
                   <button type="button" aria-label={`Move ${v.title} down`} className="px-1 text-[var(--color-muted)] hover:text-white" onClick={() => move(i, 1)}>▼</button></>}
                 </td>
                 <td className="py-3">
                   <div className="font-semibold">{v.title}</div>
+                  {v.description && <div className="text-xs text-white/70">{v.description}</div>}
                   <div className="text-xs text-[var(--color-muted)]">{v.kind === "COMMERCIAL" ? v.advertiser ?? v.artistName : v.artistName} · {(v.fileSize / 1048576).toFixed(0)} MB
                     {v.kind === "COMMERCIAL" && <> · weight {v.weight}{v.startsOn || v.endsOn ? ` · ${v.startsOn ? new Date(v.startsOn).toLocaleDateString() : "…"} → ${v.endsOn ? new Date(v.endsOn).toLocaleDateString() : "…"}` : ""}</>}
                   </div>
@@ -220,8 +250,33 @@ export function VideoManager() {
                   {v.status !== "APPROVED" && <button type="button" className="btn btn-primary px-2 py-0.5 text-xs" onClick={() => act(v.id, { action: "approve" })}>Put on air</button>}
                   {v.status === "APPROVED" && <button type="button" className="btn btn-ghost px-2 py-0.5 text-xs" onClick={() => act(v.id, { action: "archive" })}>Take off air</button>}
                   {v.status === "PENDING_REVIEW" && <button type="button" className="btn btn-ghost px-2 py-0.5 text-xs" onClick={() => act(v.id, { action: "reject" })}>Reject</button>}
+                  <button type="button" aria-expanded={editing === v.id} className="btn btn-ghost px-2 py-0.5 text-xs" onClick={() => setEditing(editing === v.id ? null : v.id)}>{editing === v.id ? "Cancel edit" : "Edit"}</button>
+                  <button type="button" className="btn px-2 py-0.5 text-xs text-red-300 hover:bg-red-500/20" onClick={() => remove(v)}>Delete</button>
                 </td>
               </tr>
+              {editing === v.id && (
+                <tr className="bg-black/30">
+                  <td colSpan={5} className="p-3">
+                    <form className="grid gap-3 sm:grid-cols-2" onSubmit={(e) => { e.preventDefault(); saveEdit(v, e.currentTarget); }}>
+                      <label className="text-xs"><span className="label">Title</span><input name="title" required maxLength={200} defaultValue={v.title} className="field text-sm" /></label>
+                      <label className="text-xs"><span className="label">{KINDS.find(([k]) => k === v.kind)?.[2] ?? "Artist"}</span><input name="artistName" required maxLength={200} defaultValue={v.artistName} className="field text-sm" /></label>
+                      <label className="text-xs sm:col-span-2"><span className="label">Info (optional — shown under the title on screen)</span>
+                        <input name="description" maxLength={300} defaultValue={v.description ?? ""} placeholder="e.g. From the album Night Cap · 2026 · Directed by …" className="field text-sm" /></label>
+                      {v.kind === "COMMERCIAL" && <>
+                        <label className="text-xs"><span className="label">Advertiser</span><input name="advertiser" maxLength={200} defaultValue={v.advertiser ?? ""} className="field text-sm" /></label>
+                        <label className="text-xs"><span className="label">How often (1 = normal, 10 = most)</span><input name="weight" type="number" min={1} max={10} defaultValue={v.weight} className="field text-sm" /></label>
+                        <label className="text-xs"><span className="label">Runs from (optional)</span><input name="startsOn" type="date" defaultValue={v.startsOn?.slice(0, 10) ?? ""} className="field text-sm" /></label>
+                        <label className="text-xs"><span className="label">Runs until (optional)</span><input name="endsOn" type="date" defaultValue={v.endsOn?.slice(0, 10) ?? ""} className="field text-sm" /></label>
+                      </>}
+                      <div className="flex gap-2 sm:col-span-2">
+                        <button type="submit" className="btn btn-primary px-4 py-1.5 text-sm">Save changes</button>
+                        <button type="button" className="btn btn-ghost px-4 py-1.5 text-sm" onClick={() => setEditing(null)}>Cancel</button>
+                      </div>
+                    </form>
+                  </td>
+                </tr>
+              )}
+              </Fragment>
             ))}
             {list.length === 0 && <tr><td colSpan={5} className="p-6 text-center text-sm text-[var(--color-muted)]">Nothing here yet — upload above.</td></tr>}
           </tbody>

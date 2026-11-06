@@ -445,6 +445,8 @@ model MusicVideo {
   kind            TvKind      @default(MUSIC_VIDEO)
   title           String
   artistName      String
+  /// Extra info shown under the title on screen (album, year, director, credits…)
+  description     String?
   /// Commercials: who the ad is for (shown with the "Advertisement" label)
   advertiser      String?
   /// Commercials: flight dates (inclusive). Null = no limit.
