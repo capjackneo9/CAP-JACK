@@ -1,7 +1,8 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { MixEngine, type Meter, type MicInput } from "@/lib/audio/engine";
-import { ProgramRecorder, Webcaster } from "@/lib/audio/webcaster";
+import { Webcaster } from "@/lib/audio/webcaster";
+import { WavRecorder } from "@/lib/audio/wav";
 import { deriveOnAir, ON_AIR_LABEL, type TransportState } from "@/lib/audio/onair";
 import { useBroadcast } from "../useBroadcast";
 import { DeckPanel, type LibraryTrack } from "./DeckPanel";
@@ -442,27 +443,41 @@ function QueuePanel({ engine, library }: { engine: MixEngine; library: LibraryTr
 }
 
 function RecorderPanel({ engine }: { engine: MixEngine }) {
-  const rec = useRef(new ProgramRecorder());
+  const rec = useRef<WavRecorder | null>(null);
   const [recording, setRecording] = useState(false);
   const [elapsed, setElapsed] = useState(0);
+  const [mb, setMb] = useState(0);
   const [url, setUrl] = useState<string | null>(null);
+  const [fileName, setFileName] = useState("ncvr-program.wav");
   const [err, setErr] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
   useEffect(() => {
     if (!recording) return;
-    const id = setInterval(() => setElapsed((Date.now() - (rec.current.startedAt ?? Date.now())) / 1000), 500);
+    const id = setInterval(() => {
+      setElapsed((Date.now() - (rec.current?.startedAt ?? Date.now())) / 1000);
+      setMb((rec.current?.bytes ?? 0) / 1e6);
+    }, 500);
     return () => clearInterval(id);
   }, [recording]);
-  function startRec() {
+  async function startRec() {
     if (recording) return;
     const ok = engine.canRecord();
     if (!ok.ok) { reportControl(ok.reason!); return setErr(ok.reason!); }
     setErr(null);
-    try { rec.current.start(engine.programOut.stream); setRecording(true); setElapsed(0); } catch (e) { setErr((e as Error).message); }
+    const tap = await engine.tapReady;
+    if (!tap) return setErr("This browser can't record WAV (no AudioWorklet). Use Chrome or Edge.");
+    await engine.resume();
+    if (!rec.current) rec.current = new WavRecorder(tap, engine.ctx.sampleRate, () => { setErr("Reached the 4 GB WAV limit — recording stopped and saved."); stopRec(); });
+    rec.current.start();
+    setFileName(`ncvr-program-${new Date().toISOString().slice(0, 16).replace(":", "-")}.wav`);
+    setRecording(true); setElapsed(0); setMb(0);
   }
   async function stopRec() {
-    if (!recording) return;
+    if (!rec.current?.recording) return;
+    setSaving(true);
     const blob = await rec.current.stop();
-    setRecording(false);
+    setRecording(false); setSaving(false);
+    setMb(blob.size / 1e6);
     if (url) URL.revokeObjectURL(url);
     setUrl(URL.createObjectURL(blob));
   }
@@ -471,18 +486,18 @@ function RecorderPanel({ engine }: { engine: MixEngine }) {
     <section className="glass p-4" aria-label="Recorder">
       <div className="mb-3 flex items-center justify-between">
         <div className="font-[family-name:var(--font-display)] text-sm font-bold tracking-widest">RECORD PROGRAM</div>
-        {recording && <span className="font-mono text-sm text-[var(--color-live)]">● REC {fmtTime(elapsed)}</span>}
+        {recording && <span className="font-mono text-sm text-[var(--color-live)]">● REC {fmtTime(elapsed)} · {mb.toFixed(1)} MB</span>}
       </div>
       <div className="flex flex-wrap gap-2">
         {!recording ? (
           <button type="button" className="btn btn-live px-4 py-1.5 text-sm" onClick={startRec}>Start recording</button>
         ) : (
-          <button type="button" className="btn btn-ghost px-4 py-1.5 text-sm" onClick={stopRec}>Stop</button>
+          <button type="button" className="btn btn-ghost px-4 py-1.5 text-sm" disabled={saving} onClick={stopRec}>{saving ? "Saving…" : "Stop"}</button>
         )}
-        {url && <a className="btn btn-gold px-4 py-1.5 text-sm" href={url} download={`ncvr-program-${new Date().toISOString().slice(0, 16)}.webm`}>Download recording</a>}
+        {url && !recording && <a className="btn btn-gold px-4 py-1.5 text-sm" href={url} download={fileName}>Download WAV ({mb.toFixed(1)} MB)</a>}
       </div>
       {err && <p className="mt-2 text-xs text-red-300">{err}</p>}
-      <p className="mt-2 text-[10px] text-[var(--color-muted)]">Records the transmitted program bus locally in this browser. Recording is blocked while an on-air guest has not consented.</p>
+      <p className="mt-2 text-[10px] text-[var(--color-muted)]">Records exactly what is transmitted (the master program bus) as an uncompressed 16-bit stereo WAV, about 690 MB per hour. Download it before closing the page. Recording is blocked while an on-air guest has not consented.</p>
     </section>
   );
 }

@@ -95,26 +95,3 @@ export class Webcaster {
     ws?.close(1000, "DJ ended broadcast");
   }
 }
-
-export class ProgramRecorder {
-  private rec: MediaRecorder | null = null;
-  private chunks: Blob[] = [];
-  startedAt: number | null = null;
-  start(stream: MediaStream) {
-    const mime = Webcaster.supportedMime() ?? "";
-    this.chunks = [];
-    this.rec = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
-    this.rec.ondataavailable = (e) => e.data.size && this.chunks.push(e.data);
-    this.rec.start(1000);
-    this.startedAt = Date.now();
-  }
-  stop(): Promise<Blob> {
-    return new Promise((resolve) => {
-      if (!this.rec) return resolve(new Blob());
-      this.rec.onstop = () => resolve(new Blob(this.chunks, { type: this.rec?.mimeType || "audio/webm" }));
-      this.rec.stop();
-      this.startedAt = null;
-    });
-  }
-  get recording() { return this.rec?.state === "recording"; }
-}

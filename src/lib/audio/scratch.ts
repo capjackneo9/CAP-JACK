@@ -89,6 +89,34 @@ class NcvrDeck extends AudioWorkletProcessor {
   }
 }
 registerProcessor("ncvr-scratch", NcvrDeck);
+
+// Program tap for WAV recording: forwards the master bus as raw stereo samples.
+class NcvrTap extends AudioWorkletProcessor {
+  constructor() {
+    super();
+    this.on = false; this.size = 8192; this.reset();
+    this.port.onmessage = (e) => { if (e.data.type === "start") { this.on = true; this.reset(); } else if (e.data.type === "stop") { this.flush(); this.on = false; this.port.postMessage({ type: "stopped" }); } };
+  }
+  reset() { this.l = new Float32Array(this.size); this.r = new Float32Array(this.size); this.n = 0; }
+  flush() {
+    if (!this.n) return;
+    const l = this.l.slice(0, this.n), r = this.r.slice(0, this.n);
+    this.port.postMessage({ type: "data", l, r }, [l.buffer, r.buffer]);
+    this.reset();
+  }
+  process(inputs) {
+    if (!this.on) return true;
+    const inp = inputs[0];
+    const a = inp[0], b = inp[1] || inp[0];
+    if (!a) return true; // silent / disconnected
+    for (let i = 0; i < a.length; i++) {
+      this.l[this.n] = a[i]; this.r[this.n] = b[i]; this.n++;
+      if (this.n === this.size) this.flush();
+    }
+    return true;
+  }
+}
+registerProcessor("ncvr-tap", NcvrTap);
 `;
 
 /**

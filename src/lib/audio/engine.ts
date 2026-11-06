@@ -285,6 +285,13 @@ export class MixEngine {
     this.monitorBus.connect(ctx.destination);
     this.cueBus.connect(this.cueOut);
 
+    // Program tap for WAV recording (records exactly what is transmitted)
+    this.tapReady = worklet.then((ok) => {
+      if (!ok) return null;
+      const tap = new AudioWorkletNode(ctx, "ncvr-tap", { numberOfInputs: 1, numberOfOutputs: 0, channelCount: 2, channelCountMode: "explicit" });
+      this.master.connect(tap);
+      return tap;
+    }).catch(() => null);
     this.decks = { A: new Deck(ctx, "A", this.musicBus, this.cueBus, worklet), B: new Deck(ctx, "B", this.musicBus, this.cueBus, worklet) };
     this.setCrossfade(0.5);
 
@@ -357,6 +364,8 @@ export class MixEngine {
     this.micPick = split;
   }
   micPick: AudioNode | null = null;
+  /** Resolves to the program tap used for WAV recording (null without AudioWorklet). */
+  tapReady: Promise<AudioWorkletNode | null>;
   micChannels = 0;
 
   setMicOpen(open: boolean) { this.micOpen = open; this.applyMic(); }
