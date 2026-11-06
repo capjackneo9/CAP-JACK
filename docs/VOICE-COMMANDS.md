@@ -22,7 +22,7 @@ Start every command with **“console”** so your normal on-air talk never trig
 
 - **Go live** needs your DJ username and password already typed in the transmitter, and waits 10 seconds for “confirm”.
 - If your mic is ON, listeners hear the command too — say commands with the mic closed or muted.
-- **Is it hearing me?** While listening, the panel shows *Listening on: <mic name>*, a level bar that moves when you talk,
-  “Speech engine connected” and “Hearing speech”. Voice commands use Chrome’s **default** microphone: change it from the
-  padlock / mic icon in the address bar, or Windows → Settings → Sound → Input, then turn voice commands off and on.
-  Chrome turns speech into text using Google's speech service, so it needs an internet connection.
+- **Choose the mic:** while listening, pick it in **Voice mic** (e.g. Volt 2). The level bar should move when you talk,
+  and the lights show “Speech engine connected” and “Hearing speech”. Picking a mic needs Chrome or Edge 135 or newer;
+  older versions always use Chrome’s default mic (set it from the padlock icon → Site settings → Microphone,
+  or Windows → Settings → Sound → Input) and the panel says so.

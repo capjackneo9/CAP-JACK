@@ -16,11 +16,19 @@ interface Recognizer {
   onspeechend?: (() => void) | null;
   onerror: ((e: { error: string }) => void) | null;
   onend: (() => void) | null;
-  start: () => void; stop: () => void; abort: () => void;
+  start: (track?: MediaStreamTrack) => void; stop: () => void; abort: () => void;
 }
 type RecognizerCtor = new () => Recognizer;
 
 const LS_WAKE = "ncvr.voice.wake";
+const LS_DEVICE = "ncvr.voice.device";
+
+/** Chrome/Edge 135+ can run speech recognition on a chosen microphone (start(track)); older ones use the default mic. */
+function canPickMic(): boolean {
+  if (typeof navigator === "undefined") return false;
+  const m = navigator.userAgent.match(/(?:Chrome|Edg)\/(\d+)/);
+  return !!m && Number(m[1]) >= 135;
+}
 const CONFIRM_MS = 10000;
 
 function recognizerCtor(): RecognizerCtor | null {
@@ -48,6 +56,10 @@ export function VoicePanel() {
   const [audioOk, setAudioOk] = useState(false);
   const [speaking, setSpeaking] = useState(false);
   const [noAudio, setNoAudio] = useState(false);
+  const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
+  const [deviceId, setDeviceId] = useState("");
+  const [direct, setDirect] = useState(false); // recognizer is fed the chosen mic (not Chrome's default)
+  const trackRef = useRef<MediaStreamTrack | null>(null);
   const rec = useRef<Recognizer | null>(null);
   const onRef = useRef(false);
   const wakeRef = useRef(true);
@@ -58,7 +70,10 @@ export function VoicePanel() {
 
   useEffect(() => {
     setSupported(Boolean(recognizerCtor()));
-    try { const v = localStorage.getItem(LS_WAKE); if (v !== null) setWake(v === "1"); } catch { /* private mode */ }
+    try {
+      const v = localStorage.getItem(LS_WAKE); if (v !== null) setWake(v === "1");
+      setDeviceId(localStorage.getItem(LS_DEVICE) ?? "");
+    } catch { /* private mode */ }
   }, []);
 
   useControlReports((text) => setFeedback({ text, tone: "warn" }));
@@ -97,6 +112,16 @@ export function VoicePanel() {
     emitControl(r.action);
   }, []);
 
+  /** Start the recognizer on `track` where the browser supports it. Returns whether it uses that track. */
+  const begin = useCallback((r: Recognizer): boolean => {
+    const t = trackRef.current;
+    if (t && t.readyState === "live" && canPickMic()) {
+      try { r.start(t); return true; } catch { /* fall back to the default mic */ }
+    }
+    try { r.start(); } catch { /* already started */ }
+    return false;
+  }, []);
+
   const start = useCallback(() => {
     const Ctor = recognizerCtor();
     if (!Ctor) return;
@@ -128,51 +153,63 @@ export function VoicePanel() {
       }
     };
     // Chrome stops listening after a while; keep it going while switched on.
-    r.onend = () => { if (onRef.current) setTimeout(() => { if (onRef.current) { try { r.start(); } catch { /* already started */ } } }, 300); };
+    r.onend = () => { if (onRef.current && rec.current === r) setTimeout(() => { if (onRef.current && rec.current === r) begin(r); }, 300); };
     rec.current = r;
-    try { r.start(); } catch { /* already started */ }
-  }, [handle]);
+    setDirect(begin(r));
+  }, [handle, begin]);
 
-  useEffect(() => {
-    if (on) start();
-    else { rec.current?.abort(); rec.current = null; setInterim(""); setAudioOk(false); setSpeaking(false); setNoAudio(false); }
-    return () => { rec.current?.abort(); };
-  }, [on, start]);
+  const refreshDevices = useCallback(() => {
+    navigator.mediaDevices?.enumerateDevices().then((d) => setDevices(d.filter((x) => x.kind === "audioinput" && x.deviceId !== "default" && x.deviceId !== "communications"))).catch(() => null);
+  }, []);
 
-  // Mic check: which input the browser gives voice commands (its default mic), plus a live level.
+  // Open the chosen mic (level meter + feed for the recognizer), then start listening.
   useEffect(() => {
-    if (!on) { setMicLabel(null); setLevel(0); return; }
+    if (!on) {
+      rec.current?.abort(); rec.current = null;
+      setInterim(""); setAudioOk(false); setSpeaking(false); setNoAudio(false); setMicLabel(null); setLevel(0); setDirect(false);
+      return;
+    }
     let stream: MediaStream | null = null;
     let ctx: AudioContext | null = null;
     let raf = 0;
     let cancelled = false;
     const noAudioTimer = setTimeout(() => setNoAudio(true), 6000);
-    navigator.mediaDevices?.getUserMedia({ audio: true }).then((s) => {
-      if (cancelled) { s.getTracks().forEach((t) => t.stop()); return; }
-      stream = s;
-      setMicLabel(s.getAudioTracks()[0]?.label || "Default microphone");
-      ctx = new AudioContext();
-      const an = new AnalyserNode(ctx, { fftSize: 512 });
-      ctx.createMediaStreamSource(s).connect(an);
-      const buf = new Float32Array(an.fftSize);
-      let last = 0;
-      const tick = (t: number) => {
-        an.getFloatTimeDomainData(buf);
-        let peak = 0;
-        for (const v of buf) peak = Math.max(peak, Math.abs(v));
-        if (t - last > 80) { last = t; setLevel(peak); }
+    const audio: MediaTrackConstraints = { echoCancellation: false, noiseSuppression: false, autoGainControl: true };
+    if (deviceId) audio.deviceId = { exact: deviceId };
+    navigator.mediaDevices?.getUserMedia({ audio }).catch(() => (deviceId ? navigator.mediaDevices.getUserMedia({ audio: true }) : null)).then((s) => {
+      if (cancelled) { s?.getTracks().forEach((t) => t.stop()); return; }
+      if (s) {
+        stream = s;
+        const track = s.getAudioTracks()[0] ?? null;
+        trackRef.current = track;
+        setMicLabel(track?.label || "Default microphone");
+        refreshDevices();
+        ctx = new AudioContext();
+        const an = new AnalyserNode(ctx, { fftSize: 512 });
+        ctx.createMediaStreamSource(s).connect(an);
+        const buf = new Float32Array(an.fftSize);
+        let last = 0;
+        const tick = (t: number) => {
+          an.getFloatTimeDomainData(buf);
+          let peak = 0;
+          for (const v of buf) peak = Math.max(peak, Math.abs(v));
+          if (t - last > 80) { last = t; setLevel(peak); }
+          raf = requestAnimationFrame(tick);
+        };
         raf = requestAnimationFrame(tick);
-      };
-      raf = requestAnimationFrame(tick);
-    }).catch(() => setMicLabel(null));
+      }
+      start();
+    });
     return () => {
       cancelled = true;
       clearTimeout(noAudioTimer);
       cancelAnimationFrame(raf);
+      const r = rec.current; rec.current = null; r?.abort();
+      trackRef.current = null;
       stream?.getTracks().forEach((t) => t.stop());
       ctx?.close().catch(() => null);
     };
-  }, [on]);
+  }, [on, deviceId, start, refreshDevices]);
 
   const toneClass = feedback?.tone === "ok" ? "text-[var(--color-signal)]" : feedback?.tone === "err" ? "text-red-300" : "text-[var(--color-gold)]";
 
@@ -196,8 +233,14 @@ export function VoicePanel() {
       </div>
       {on && (
         <div className="mt-3 flex flex-wrap items-center gap-3 rounded-lg border border-white/10 bg-black/30 p-2 text-xs">
-          <span className="text-[var(--color-muted)]">Listening on:</span>
-          <strong className="truncate">{micLabel ?? "…"}</strong>
+          <label className="flex items-center gap-2">
+            <span className="whitespace-nowrap text-[var(--color-muted)]">Voice mic:</span>
+            <select aria-label="Microphone for voice commands" className="field max-w-xs py-1 text-xs" value={deviceId}
+              onChange={(e) => { setDeviceId(e.target.value); setAudioOk(false); try { localStorage.setItem(LS_DEVICE, e.target.value); } catch { /* private mode */ } }}>
+              <option value="">Chrome default{!deviceId && micLabel ? ` (${micLabel})` : ""}</option>
+              {devices.map((d) => <option key={d.deviceId} value={d.deviceId}>{d.label || "Microphone"}</option>)}
+            </select>
+          </label>
           <span className="relative h-2 w-32 overflow-hidden rounded bg-white/10" role="meter" aria-label="Voice mic level" aria-valuemin={0} aria-valuemax={1} aria-valuenow={Number(level.toFixed(2))}>
             <span className="absolute inset-y-0 left-0 bg-[var(--color-signal)] transition-[width] duration-75" style={{ width: `${level > 0 ? Math.min(100, Math.max(0, ((20 * Math.log10(level) + 60) / 60) * 100)) : 0}%` }} />
           </span>
@@ -211,10 +254,14 @@ export function VoicePanel() {
         </p>
       )}
       {on && micLabel && (
-        <p className="mt-1 text-[10px] text-[var(--color-muted)]">
-          Wrong mic? Voice commands always use Chrome&apos;s default microphone: click the padlock (or the camera/mic icon) in the address bar → choose your mic (e.g. Volt 2), or set it in Windows → Settings → Sound → Input. Then turn voice commands off and on.
-          If the bar doesn&apos;t move when you talk, the mic isn&apos;t reaching the browser.
-        </p>
+        direct ? (
+          <p className="mt-1 text-[10px] text-[var(--color-muted)]">Voice commands are listening to <strong>{micLabel}</strong>. If the bar doesn&apos;t move when you talk, pick another mic above or turn up the mic&apos;s gain.</p>
+        ) : (
+          <p className="mt-1 text-[10px] text-[var(--color-gold)]">
+            This browser can only run voice commands on Chrome&apos;s default microphone — the bar shows <strong>{micLabel}</strong>, but speech is heard from the default.
+            Update Chrome (version 135 or newer) to pick a mic here, or set the default: padlock icon in the address bar → Site settings → Microphone (or Windows → Settings → Sound → Input).
+          </p>
+        )
       )}
       {on && (
         <div className="mt-2 space-y-1 text-xs">
