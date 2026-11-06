@@ -11,6 +11,9 @@ interface SpeechEvt { resultIndex: number; results: ArrayLike<SpeechRes> }
 interface Recognizer {
   continuous: boolean; interimResults: boolean; lang: string;
   onresult: ((e: SpeechEvt) => void) | null;
+  onaudiostart?: (() => void) | null;
+  onspeechstart?: (() => void) | null;
+  onspeechend?: (() => void) | null;
   onerror: ((e: { error: string }) => void) | null;
   onend: (() => void) | null;
   start: () => void; stop: () => void; abort: () => void;
@@ -40,6 +43,11 @@ export function VoicePanel() {
   const [feedback, setFeedback] = useState<{ text: string; tone: "ok" | "warn" | "err" } | null>(null);
   const [pending, setPending] = useState<{ action: ControlAction; say: string; until: number } | null>(null);
   const [showHelp, setShowHelp] = useState(false);
+  const [micLabel, setMicLabel] = useState<string | null>(null);
+  const [level, setLevel] = useState(0);
+  const [audioOk, setAudioOk] = useState(false);
+  const [speaking, setSpeaking] = useState(false);
+  const [noAudio, setNoAudio] = useState(false);
   const rec = useRef<Recognizer | null>(null);
   const onRef = useRef(false);
   const wakeRef = useRef(true);
@@ -105,6 +113,9 @@ export function VoicePanel() {
       }
       setInterim(live.trim());
     };
+    r.onaudiostart = () => { setAudioOk(true); setNoAudio(false); };
+    r.onspeechstart = () => setSpeaking(true);
+    r.onspeechend = () => setSpeaking(false);
     r.onerror = (e) => {
       if (e.error === "no-speech" || e.error === "aborted") return;
       if (e.error === "not-allowed" || e.error === "service-not-allowed") {
@@ -124,9 +135,44 @@ export function VoicePanel() {
 
   useEffect(() => {
     if (on) start();
-    else { rec.current?.abort(); rec.current = null; setInterim(""); }
+    else { rec.current?.abort(); rec.current = null; setInterim(""); setAudioOk(false); setSpeaking(false); setNoAudio(false); }
     return () => { rec.current?.abort(); };
   }, [on, start]);
+
+  // Mic check: which input the browser gives voice commands (its default mic), plus a live level.
+  useEffect(() => {
+    if (!on) { setMicLabel(null); setLevel(0); return; }
+    let stream: MediaStream | null = null;
+    let ctx: AudioContext | null = null;
+    let raf = 0;
+    let cancelled = false;
+    const noAudioTimer = setTimeout(() => setNoAudio(true), 6000);
+    navigator.mediaDevices?.getUserMedia({ audio: true }).then((s) => {
+      if (cancelled) { s.getTracks().forEach((t) => t.stop()); return; }
+      stream = s;
+      setMicLabel(s.getAudioTracks()[0]?.label || "Default microphone");
+      ctx = new AudioContext();
+      const an = new AnalyserNode(ctx, { fftSize: 512 });
+      ctx.createMediaStreamSource(s).connect(an);
+      const buf = new Float32Array(an.fftSize);
+      let last = 0;
+      const tick = (t: number) => {
+        an.getFloatTimeDomainData(buf);
+        let peak = 0;
+        for (const v of buf) peak = Math.max(peak, Math.abs(v));
+        if (t - last > 80) { last = t; setLevel(peak); }
+        raf = requestAnimationFrame(tick);
+      };
+      raf = requestAnimationFrame(tick);
+    }).catch(() => setMicLabel(null));
+    return () => {
+      cancelled = true;
+      clearTimeout(noAudioTimer);
+      cancelAnimationFrame(raf);
+      stream?.getTracks().forEach((t) => t.stop());
+      ctx?.close().catch(() => null);
+    };
+  }, [on]);
 
   const toneClass = feedback?.tone === "ok" ? "text-[var(--color-signal)]" : feedback?.tone === "err" ? "text-red-300" : "text-[var(--color-gold)]";
 
@@ -148,6 +194,28 @@ export function VoicePanel() {
         </label>
         <button type="button" className="btn btn-ghost ml-auto px-3 py-1.5 text-xs" aria-expanded={showHelp} onClick={() => setShowHelp(!showHelp)}>{showHelp ? "Hide commands" : "What can I say?"}</button>
       </div>
+      {on && (
+        <div className="mt-3 flex flex-wrap items-center gap-3 rounded-lg border border-white/10 bg-black/30 p-2 text-xs">
+          <span className="text-[var(--color-muted)]">Listening on:</span>
+          <strong className="truncate">{micLabel ?? "…"}</strong>
+          <span className="relative h-2 w-32 overflow-hidden rounded bg-white/10" role="meter" aria-label="Voice mic level" aria-valuemin={0} aria-valuemax={1} aria-valuenow={Number(level.toFixed(2))}>
+            <span className="absolute inset-y-0 left-0 bg-[var(--color-signal)] transition-[width] duration-75" style={{ width: `${level > 0 ? Math.min(100, Math.max(0, ((20 * Math.log10(level) + 60) / 60) * 100)) : 0}%` }} />
+          </span>
+          <span className={audioOk ? "text-[var(--color-signal)]" : "text-[var(--color-muted)]"}>{audioOk ? "● Speech engine connected" : "○ Connecting speech engine…"}</span>
+          <span className={speaking ? "text-[var(--color-gold)]" : "text-[var(--color-muted)]"}>{speaking ? "● Hearing speech" : "○ Quiet"}</span>
+        </div>
+      )}
+      {on && (noAudio && !audioOk) && (
+        <p role="alert" className="mt-2 text-xs text-red-300">
+          The speech engine hasn&apos;t started. Check the internet connection, and that the microphone is allowed for this site (padlock icon → Site settings).
+        </p>
+      )}
+      {on && micLabel && (
+        <p className="mt-1 text-[10px] text-[var(--color-muted)]">
+          Wrong mic? Voice commands always use Chrome&apos;s default microphone: click the padlock (or the camera/mic icon) in the address bar → choose your mic (e.g. Volt 2), or set it in Windows → Settings → Sound → Input. Then turn voice commands off and on.
+          If the bar doesn&apos;t move when you talk, the mic isn&apos;t reaching the browser.
+        </p>
+      )}
       {on && (
         <div className="mt-2 space-y-1 text-xs">
           <p className="text-[var(--color-muted)]">Heard: <span className="font-mono text-white/80">{interim || heard || "…"}</span></p>
