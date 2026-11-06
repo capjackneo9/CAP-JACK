@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { MixEngine, type Meter, type MicInput } from "@/lib/audio/engine";
 import { Webcaster } from "@/lib/audio/webcaster";
 import { WavRecorder } from "@/lib/audio/wav";
+import { findPrimaryMic } from "@/lib/audio/voice";
 import { deriveOnAir, ON_AIR_LABEL, type TransportState } from "@/lib/audio/onair";
 import { useBroadcast } from "../useBroadcast";
 import { DeckPanel, type LibraryTrack } from "./DeckPanel";
@@ -218,10 +219,17 @@ function MicChannel({ engine, meter }: { engine: MixEngine; meter?: Meter }) {
   useEffect(() => { engine.setMicOpen(open); }, [engine, open]);
   useEffect(() => { engine.setMicMuted(muted); }, [engine, muted]);
 
-  async function enable(id: string = deviceId, opts: { input?: MicInput; voiceProcessing?: boolean } = {}) {
+  async function enable(id: string = deviceId, opts: { input?: MicInput; voiceProcessing?: boolean; auto?: boolean } = {}) {
     setErr(null);
     try {
-      await engine.enableMic(id || undefined, { input: opts.input ?? input, voiceProcessing: opts.voiceProcessing ?? voiceProcessing });
+      const o = { input: opts.input ?? input, voiceProcessing: opts.voiceProcessing ?? voiceProcessing };
+      await engine.enableMic(id || undefined, o);
+      // No mic picked yet: use the Volt (the station's primary mic) when it's plugged in.
+      // Device names are only visible after the first permission, hence the second step.
+      if (!id && opts.auto) {
+        const primary = findPrimaryMic(await navigator.mediaDevices.enumerateDevices());
+        if (primary) { await engine.enableMic(primary.deviceId, o); id = primary.deviceId; }
+      }
       setDeviceId(id); setEnabled(true); setChannels(engine.micChannels); setSilentFor(0); refreshDevices();
     }
     catch (e) { setErr((e as Error).name === "NotAllowedError" ? "Microphone permission was denied." : (e as Error).message); }
@@ -245,7 +253,7 @@ function MicChannel({ engine, meter }: { engine: MixEngine; meter?: Meter }) {
               <option value="">{enabled ? "Default microphone" : "Select microphone…"}</option>
               {devices.map((d) => <option key={d.deviceId} value={d.deviceId}>{d.label || "Microphone"}</option>)}
             </select>
-            {!enabled && <button type="button" className="btn btn-ghost px-3 py-1.5 text-sm" onClick={() => enable()}>Enable mic</button>}
+            {!enabled && <button type="button" className="btn btn-ghost px-3 py-1.5 text-sm" onClick={() => enable(deviceId, { auto: true })}>Enable mic</button>}
           </div>
           {enabled && channels >= 2 && (
             <div className="flex flex-wrap items-center gap-2 text-xs">

@@ -93,3 +93,8 @@ export function parseVoiceCommand(raw: string): VoiceResult | null {
   if (/\b(master|station|main) volume (down|quieter)\b|\bmaster down\b/.test(t)) return { kind: "action", action: { target: "master", kind: "adjust", delta: -0.1 }, say: "Master quieter" };
   return null;
 }
+
+/** The station's primary microphone (the Universal Audio Volt interface), when it is plugged in. */
+export function findPrimaryMic<T extends { kind: string; deviceId: string; label: string }>(devices: T[]): T | undefined {
+  return devices.find((d) => d.kind === "audioinput" && d.deviceId !== "default" && d.deviceId !== "communications" && /\bvolt\b/i.test(d.label));
+}

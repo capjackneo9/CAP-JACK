@@ -42,3 +42,18 @@ describe("voice commands", () => {
     expect(parseVoiceCommand("what a beautiful night")).toBeNull();
   });
 });
+
+describe("primary mic", () => {
+  it("finds the Volt interface, not Windows' default/communications aliases", async () => {
+    const { findPrimaryMic } = await import("../src/lib/audio/voice");
+    const d = [
+      { kind: "audioinput", deviceId: "default", label: "Default - Microphone (Volt 2)" },
+      { kind: "audioinput", deviceId: "abc", label: "Microphone (Realtek Audio)" },
+      { kind: "audioinput", deviceId: "v2", label: "Microphone (Volt 2)" },
+      { kind: "audiooutput", deviceId: "o", label: "Speakers (Volt 2)" },
+    ];
+    expect(findPrimaryMic(d)?.deviceId).toBe("v2");
+    expect(findPrimaryMic(d.slice(1, 2))).toBeUndefined();
+    expect(findPrimaryMic([{ kind: "audioinput", deviceId: "x", label: "Revolt Mic" }])).toBeUndefined();
+  });
+});

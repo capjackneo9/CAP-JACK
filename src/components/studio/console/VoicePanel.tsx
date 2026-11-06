@@ -1,7 +1,7 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ControlAction } from "@/lib/audio/midi";
-import { VOICE_HELP, WAKE_WORD, parseVoiceCommand, stripWakeWord } from "@/lib/audio/voice";
+import { VOICE_HELP, WAKE_WORD, findPrimaryMic, parseVoiceCommand, stripWakeWord } from "@/lib/audio/voice";
 import { emitControl, useControlReports } from "./controlBus";
 
 /* Minimal typing for the browser speech recognizer (Chrome / Edge: webkitSpeechRecognition). */
@@ -60,6 +60,7 @@ export function VoicePanel() {
   const [deviceId, setDeviceId] = useState("");
   const [direct, setDirect] = useState(false); // recognizer is fed the chosen mic (not Chrome's default)
   const trackRef = useRef<MediaStreamTrack | null>(null);
+  const chosen = useRef(false); // the DJ picked a mic themselves (otherwise the Volt is used when present)
   const rec = useRef<Recognizer | null>(null);
   const onRef = useRef(false);
   const wakeRef = useRef(true);
@@ -72,7 +73,9 @@ export function VoicePanel() {
     setSupported(Boolean(recognizerCtor()));
     try {
       const v = localStorage.getItem(LS_WAKE); if (v !== null) setWake(v === "1");
-      setDeviceId(localStorage.getItem(LS_DEVICE) ?? "");
+      const saved = localStorage.getItem(LS_DEVICE);
+      chosen.current = saved !== null;
+      setDeviceId(saved ?? "");
     } catch { /* private mode */ }
   }, []);
 
@@ -159,7 +162,11 @@ export function VoicePanel() {
   }, [handle, begin]);
 
   const refreshDevices = useCallback(() => {
-    navigator.mediaDevices?.enumerateDevices().then((d) => setDevices(d.filter((x) => x.kind === "audioinput" && x.deviceId !== "default" && x.deviceId !== "communications"))).catch(() => null);
+    navigator.mediaDevices?.enumerateDevices().then((d) => {
+      setDevices(d.filter((x) => x.kind === "audioinput" && x.deviceId !== "default" && x.deviceId !== "communications"));
+      const primary = findPrimaryMic(d);
+      if (primary && !chosen.current) setDeviceId(primary.deviceId);
+    }).catch(() => null);
   }, []);
 
   // Open the chosen mic (level meter + feed for the recognizer), then start listening.
@@ -236,7 +243,7 @@ export function VoicePanel() {
           <label className="flex items-center gap-2">
             <span className="whitespace-nowrap text-[var(--color-muted)]">Voice mic:</span>
             <select aria-label="Microphone for voice commands" className="field max-w-xs py-1 text-xs" value={deviceId}
-              onChange={(e) => { setDeviceId(e.target.value); setAudioOk(false); try { localStorage.setItem(LS_DEVICE, e.target.value); } catch { /* private mode */ } }}>
+              onChange={(e) => { chosen.current = true; setDeviceId(e.target.value); setAudioOk(false); try { localStorage.setItem(LS_DEVICE, e.target.value); } catch { /* private mode */ } }}>
               <option value="">Chrome default{!deviceId && micLabel ? ` (${micLabel})` : ""}</option>
               {devices.map((d) => <option key={d.deviceId} value={d.deviceId}>{d.label || "Microphone"}</option>)}
             </select>
